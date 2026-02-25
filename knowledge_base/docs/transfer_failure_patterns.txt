@@ -1,0 +1,73 @@
+TRANSFER FAILURE PATTERNS
+=========================
+
+This document describes the most common reasons transfers fail, stall, or require intervention. For each pattern, the likely symptom, root cause, and required resolution are described. Use this reference to identify the failure point in a transfer complaint.
+
+
+PATTERN 1: INSTITUTION REJECTS TRANSFER REQUEST
+-------------------------------------------------
+Symptom: Transfer remains pending or is cancelled after 1–2 weeks with no movement. Client may receive a letter or call from their originating institution.
+Root cause: The originating institution rejected the transfer request, typically due to incorrect account information, missing documentation, or internal policy (e.g., the account has restrictions on outgoing transfers).
+Resolution: A new transfer request must be submitted with corrected information. This restarts the full timeline (1–4 weeks). Wealthsimple operations must confirm the rejection reason before resubmitting.
+Timeline impact: Adds 1–4 additional weeks on top of time already elapsed.
+
+
+PATTERN 2: SECURITIES CANNOT BE TRANSFERRED IN-KIND
+-----------------------------------------------------
+Symptom: Partial transfer arrives (cash portion) but securities do not. Transfer status shows "In Progress" for an extended period after cash has been received.
+Root cause: The originating institution holds securities that Wealthsimple does not support, or the client's Wealthsimple account type does not accept in-kind transfers of those specific assets.
+Resolution: The originating institution must liquidate the securities before the transfer can complete. The client's assets will arrive as cash.
+Timeline impact: Liquidation adds 3–5 business days on top of the standard transfer timeline. Settlement of sold securities (T+1 or T+2 depending on asset type) occurs at the originating institution.
+
+
+PATTERN 3: ACCOUNT TYPE MISMATCH
+----------------------------------
+Symptom: Transfer request is rejected or flagged. Client may report they are trying to move funds from one registered account type to another.
+Root cause: The client is attempting to transfer between incompatible account types (e.g., RRSP to TFSA). Registered accounts have different contribution rules, tax treatments, and transfer eligibility.
+Resolution:
+- RRSP to RRSP: Direct institutional transfer is supported.
+- RRSP to TFSA: Not a direct transfer. Requires RRSP withdrawal (taxable event, withholding tax applies) followed by a separate TFSA contribution. Client must have available TFSA contribution room.
+- TFSA to TFSA: Direct institutional transfer is supported.
+- Non-registered to registered: Treated as a new contribution; contribution room must be available.
+Timeline impact: Varies. A mismatch identified early can be corrected before submission. If the request was already submitted, it must be cancelled and a new process initiated.
+
+
+PATTERN 4: FUNDS HOLD ON DEPOSIT
+----------------------------------
+Symptom: Client reports funds show in their account balance but are not available for withdrawal or internal transfer. The account may show a "Pending" or "On Hold" indicator against the deposited amount.
+Root cause: Wealthsimple places a 5-business-day hold on PAD (bank deposit) funds pending clearing. This is standard practice for electronic fund transfers and is not indicative of an error.
+Resolution: No action required in most cases. The hold lifts automatically after 5 business days. For large deposits that trigger an extended hold, the operations team must review the account.
+Timeline impact: Downstream actions (withdrawals, internal transfers using held funds) are delayed until the hold clears.
+
+
+PATTERN 5: BANK ACCOUNT NOT VERIFIED
+--------------------------------------
+Symptom: Deposit is rejected and returns to the originating bank. Client receives a notification that their deposit could not be processed.
+Root cause: The bank account linked to the client's Wealthsimple account is not properly verified, or the account details on file do not match the actual bank account. This can occur after a client changes banks or if the initial verification step was skipped.
+Resolution: Client must re-link and re-verify their bank account through the Wealthsimple app before retrying the deposit.
+Timeline impact: Adds 2–5 business days for re-verification plus a full new deposit cycle.
+
+
+PATTERN 6: WIRE REJECTED BY RECEIVING INSTITUTION
+---------------------------------------------------
+Symptom: Wire transfer is sent but funds do not arrive. Client contacts Wealthsimple after expected delivery date passes.
+Root cause: Certain financial institutions do not accept incoming wire transfers. Confirmed institutions that reject incoming wires: Tangerine, Peoples Trust. Other institutions may also reject wires without notice.
+Resolution: Funds are returned to the sender (Wealthsimple or client's bank, depending on direction), typically within 1–3 business days of the rejection. A different transfer method (e.g., PAD deposit or Interac e-Transfer) must be used.
+Timeline impact: Round-trip rejection and return takes 1–3 business days. Full restart of transfer process required.
+
+
+PATTERN 7: NSF — NON-SUFFICIENT FUNDS
+---------------------------------------
+Symptom: Deposit is rejected by the client's bank due to insufficient funds. Wealthsimple receives a return notification and the deposit is reversed.
+Root cause: The client's bank account did not have sufficient funds to cover the deposit at the time of processing.
+Resolution: Client must ensure sufficient funds are available before resubmitting. Repeated NSF events may trigger an account review or temporary restriction on PAD deposits.
+Timeline impact: The failed deposit is reversed, which may take 2–3 business days to reflect. A new deposit must be initiated.
+Additional risk: NSF events are flagged internally and may affect the client's transfer limits or require manual review for future large deposits.
+
+
+PATTERN 8: ANTI-FRAUD HOLD
+---------------------------
+Symptom: Transfer is submitted but does not progress. Account may show restrictions. Client cannot initiate new transfers or withdrawals. No clear status in the app.
+Root cause: The transaction triggered Wealthsimple's anti-fraud detection system. This can be caused by: unusually large transaction amount, transfer to a new or unrecognised bank account, unusual pattern of activity, or a flag from a third-party verification system.
+Resolution: Requires manual review by the Wealthsimple compliance or operations team. The client may be contacted for identity verification or additional documentation. The hold cannot be lifted by client-facing support without internal approval.
+Timeline impact: Highly variable — hours to several business days depending on review queue and required documentation.

@@ -1,0 +1,59 @@
+TRANSFER STATUS MEANINGS
+========================
+
+This document defines each transfer status shown in the Wealthsimple app and operations dashboard. For each status, the meaning, expected next action, and escalation criteria are described.
+
+
+STATUS: PENDING
+---------------
+Definition: The transfer request has been submitted by the client and received by Wealthsimple, but processing has not yet begun.
+What it means operationally: The request is queued. For PAD deposits, this means the next processing window has not yet occurred. For institutional transfers, this means the transfer documentation has not yet been sent to the originating institution.
+Expected next action: No action required from client or agent. The status will update automatically when processing begins.
+When to escalate: If a transfer has been in Pending status for more than 2 business days without moving to In Progress, investigate whether the request was submitted correctly and whether the processing queue is functioning normally.
+
+
+STATUS: IN PROGRESS / TRANSFERRING
+------------------------------------
+Definition: Wealthsimple has confirmed the transfer is active. For outgoing institutional transfers, this means the request has been sent to the originating institution. For incoming wires or PAD deposits, this means the funds are in transit.
+What it means operationally: The transfer is being processed. For institutional transfers, the originating institution has acknowledged the request and is processing their side. Wealthsimple has limited visibility into the originating institution's internal status during this phase.
+Important note: The originating institution's systems may show that the funds have left before Wealthsimple's systems show receipt. This lag is normal and does not indicate an error.
+Expected next action: No action required from client or agent during standard timelines. Refer to transfer_timelines.txt for expected duration by transfer type.
+When to escalate: If the transfer has been In Progress beyond the maximum expected timeline for its type (e.g., institutional transfer beyond 8 weeks, or internal transfer beyond 5 business days), escalate to operations for investigation.
+
+
+STATUS: ACTION REQUIRED
+------------------------
+Definition: The transfer cannot proceed without additional information or action from the client or a Wealthsimple agent.
+What it means operationally: Something has interrupted the automated process. Common triggers include: the originating institution has requested additional documentation, identity verification is needed, the transfer request was partially rejected and requires correction, or the client's account has a restriction that must be resolved.
+Expected next action: Check the client's registered email address — Wealthsimple sends a specific instruction email when this status is set. The client must complete the requested action before the transfer can resume.
+Agent responsibility: Identify what action is required and confirm whether the client has received and acknowledged the email. If the required action has been completed but the status has not updated within 1 business day, escalate to the operations team.
+When to escalate: If the action required is not clearly described in the client's email, or if the client has completed the required action and the status has not changed after 1 business day.
+
+
+STATUS: COMPLETED
+-----------------
+Definition: The transfer has been fully processed and assets are available in the destination account.
+What it means operationally: The transfer lifecycle is finished. Funds or securities have been credited to the receiving account. A confirmation email has been sent to the client.
+Expected next action: No action required. If the client reports they have not received the confirmation email, check spam and verify the registered email address on file.
+When to escalate: If the client reports the Completed status but cannot see or use the transferred assets, investigate whether the funds are subject to a hold (see PATTERN 4 in transfer_failure_patterns.txt).
+
+
+STATUS: CANCELLED
+-----------------
+Definition: The transfer did not complete and has been terminated.
+What it means operationally: Cancellation can be triggered by: the client manually cancelling the transfer, an automatic system cancellation (e.g., internal transfer open for more than 5 business days), a rejection from the originating or receiving institution, or a compliance hold that cannot be resolved.
+Expected next action: Determine the cancellation reason before advising the client to retry. Resubmitting without understanding the root cause may result in repeated cancellations.
+When to escalate: Always investigate the cancellation reason. If the cancellation was unexpected (client did not cancel it manually), escalate to operations to retrieve the internal cancellation reason code.
+Note: A cancelled transfer does not automatically trigger a re-attempt. The client must initiate a new transfer request.
+
+
+STATUS: REIMBURSED
+------------------
+Definition: A transfer fee has been reimbursed to the client's account.
+What it means operationally: Wealthsimple's fee reimbursement policy applies to institutional account transfers where the total transferred value exceeds $25,000. When eligible, Wealthsimple reimburses the transfer fee charged by the originating institution, up to a specified limit.
+Expected next action: No action required. The reimbursement appears as a credit in the client's account.
+Eligibility criteria:
+- Transfer must be an institutional account transfer (RRSP, TFSA, or non-registered from another broker).
+- Total transferred value must exceed $25,000.
+- The fee must have been documented (client must provide a statement or receipt from the originating institution showing the fee charged).
+When to escalate: If a client believes they are eligible for a reimbursement but the status has not been applied, escalate to operations with the client's transfer documentation.

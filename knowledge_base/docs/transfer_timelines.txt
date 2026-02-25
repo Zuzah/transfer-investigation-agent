@@ -1,0 +1,80 @@
+TRANSFER TIMELINES REFERENCE
+============================
+
+This document provides expected processing timelines for all Wealthsimple transfer types. Use this reference when reconstructing a transfer timeline or assessing whether a transfer is overdue.
+
+
+BANK DEPOSIT (PAD — PRE-AUTHORIZED DEBIT)
+------------------------------------------
+Expected timeline: 5–7 business days until funds are available for investing or withdrawal.
+Processing schedule: PAD deposits are processed 4 times per business day. The exact processing window depends on when the deposit was submitted relative to the daily cut-off times.
+Notes:
+- Funds may appear in the account balance before they are cleared and available.
+- Internal transfers and withdrawals are blocked on deposited funds until the 5-business-day hold clears.
+- Large deposits may trigger an extended hold pending fraud review.
+
+
+INTERAC E-TRANSFER
+------------------
+Expected timeline: Same business day in most cases; up to 1 business day in rare circumstances.
+Processing schedule: Near-real-time when submitted during business hours.
+Notes:
+- E-Transfer auto-deposit must be enabled on the client's bank account.
+- No hold period — funds are available immediately upon receipt.
+- Maximum per-transfer limits apply (set by the client's bank, typically $3,000–$10,000 per transfer).
+
+
+INSTITUTIONAL ACCOUNT TRANSFER (RRSP, TFSA, NON-REGISTERED — FROM ANOTHER BROKER)
+------------------------------------------------------------------------------------
+Expected timeline: 1–4 weeks under normal conditions.
+Extended timeline: Up to 6–8 weeks if the originating institution rejects the initial transfer request and a new request must be submitted.
+Processing schedule: Requests are submitted to the originating institution during business hours. The originating institution controls the majority of the processing time — Wealthsimple has no visibility into their internal queue.
+Notes:
+- Cash and securities may arrive separately.
+- Securities that cannot be transferred in-kind must be liquidated first, adding 3–5 business days.
+- The transfer status may remain "In Progress" for extended periods while the originating institution processes the request — this is expected.
+- See institutional_transfer_process.txt for the full step-by-step process.
+
+
+WIRE TRANSFER — CANADIAN DOLLARS (CAD)
+----------------------------------------
+Expected timeline: Same business day if submitted before the daily cut-off time; up to 3 business days otherwise.
+Cut-off time: Varies by financial institution; typically mid-afternoon Eastern Time.
+Notes:
+- Wire transfers submitted after the cut-off are processed the following business day.
+- Not all institutions accept incoming CAD wire transfers. Tangerine and Peoples Trust are known to reject incoming wires.
+- Wires cannot be reversed once sent — rejections by the receiving institution result in funds being returned, which may take 1–3 additional business days.
+
+
+WIRE TRANSFER — US DOLLARS (USD)
+----------------------------------
+Expected timeline: Same business day if submitted before cut-off; up to 3 business days otherwise.
+Cut-off time: Varies; typically early-to-mid afternoon Eastern Time for same-day processing.
+Notes:
+- USD wire transfers are subject to the same cut-off and institutional restrictions as CAD wires.
+- Currency conversion (if applicable) occurs at the time of processing and is subject to the prevailing exchange rate.
+
+
+INTERNAL TRANSFER (BETWEEN WEALTHSIMPLE ACCOUNTS)
+---------------------------------------------------
+Expected timeline: Usually instant (within minutes).
+Auto-cancellation policy: If an internal transfer remains in progress for more than 5 business days, it is automatically cancelled by the system.
+Notes:
+- Internal transfers of held funds are blocked until the holding period clears.
+- If an internal transfer is automatically cancelled, a new transfer must be initiated by the client.
+- Internal transfers between registered accounts (e.g., RRSP to TFSA) are not direct — they require a withdrawal and re-contribution, which has tax and contribution-room implications.
+
+
+WITHDRAWAL TO LINKED BANK ACCOUNT
+-----------------------------------
+Expected timeline: 1–3 business days after the withdrawal is initiated.
+Eligibility requirement: Funds must have been held in the Wealthsimple account for a minimum of 5 business days before they are eligible for withdrawal. This applies to funds received via PAD deposit.
+Notes:
+- Funds received via Interac e-Transfer do not have this holding requirement and can typically be withdrawn immediately.
+- Withdrawals from investment accounts (e.g., selling securities) require the trade to settle (T+1 for equities) before funds can be withdrawn.
+- Withdrawals to unverified or newly linked bank accounts may be held for additional review.
+
+
+BUSINESS DAY DEFINITION
+------------------------
+A business day is any weekday (Monday–Friday) excluding Canadian statutory holidays. Transfers submitted on weekends or holidays are queued for the next business day.

@@ -1,0 +1,110 @@
+INSTITUTIONAL ACCOUNT TRANSFER — STEP-BY-STEP PROCESS
+======================================================
+
+This document describes the full lifecycle of an institutional account transfer — the movement of an RRSP, TFSA, or non-registered investment account from another financial institution into Wealthsimple. This is the most complex transfer type and the most common source of escalations.
+
+Institutional transfers are governed by CIRO (Canadian Investment Regulatory Organization) rules and the internal policies of each participating institution. Wealthsimple cannot unilaterally accelerate the process once it is in the hands of the originating institution.
+
+
+OVERVIEW
+--------
+Standard timeline: 1–4 weeks
+Extended timeline: Up to 6–8 weeks if the originating institution rejects the initial request
+Maximum visibility: Wealthsimple has full visibility at Steps 1, 2, 5, and 6. During Step 3, Wealthsimple has no real-time visibility into the originating institution's internal processing queue.
+
+
+STEP 1 — CLIENT SUBMITS TRANSFER REQUEST
+-----------------------------------------
+Actor: Client
+Action: The client initiates the transfer through the Wealthsimple app by providing:
+- The originating institution name
+- The account number at the originating institution
+- The account type (RRSP, TFSA, non-registered)
+- Whether to transfer all assets or a partial amount
+- Preference for in-kind transfer (transfer securities as-is) or liquidation (sell all, transfer cash)
+
+Validation checks at this step:
+- Account type at origin must match account type at destination (RRSP → RRSP, TFSA → TFSA). Mismatches are flagged before submission.
+- Client must have an open, funded Wealthsimple account of the matching type.
+
+Common failure at this step: Account type mismatch (see PATTERN 3 in transfer_failure_patterns.txt).
+
+
+STEP 2 — WEALTHSIMPLE GENERATES AND SENDS TRANSFER DOCUMENTATION
+------------------------------------------------------------------
+Actor: Wealthsimple operations
+Action: Wealthsimple generates the official transfer request documentation (typically a Transfer Authorization Form or the equivalent electronic ATON/DTCC instruction) and transmits it to the originating institution. Depending on the institution, this is sent via:
+- Electronic transfer network (preferred, faster)
+- Fax (used for institutions not on electronic networks)
+- In some cases, a combination of both
+
+Timing: This step typically completes within 1–2 business days of the client's submission.
+
+Common failures at this step:
+- Fax delivery failure: The fax does not reach the originating institution's transfer department. Wealthsimple may not receive a failure notification.
+- Electronic transmission rejection: The ATON request is rejected due to a data mismatch (e.g., incorrect account number format).
+- Incorrect institution contact information: Wealthsimple's records for the institution's transfer department are outdated.
+
+Investigative note: If a transfer has been in "Pending" status for more than 3 business days, Step 2 should be verified — confirm whether the documentation was successfully delivered.
+
+
+STEP 3 — ORIGINATING INSTITUTION REVIEWS AND PROCESSES THE REQUEST
+--------------------------------------------------------------------
+Actor: Originating institution
+Action: The originating institution's back-office or transfer department receives the request and processes it according to their internal procedures. This includes:
+- Verifying the client's identity and account ownership
+- Confirming the account balance and holdings
+- Determining whether securities will be transferred in-kind or liquidated
+- Completing internal compliance and approval steps
+
+Wealthsimple's visibility: None. The transfer status at Wealthsimple remains "In Progress" during the entirety of Step 3. Wealthsimple cannot query the originating institution's queue or status.
+
+Typical duration: 5–15 business days, but varies significantly by institution.
+
+Known slow institutions: Some major Canadian banks and credit unions have transfer departments with longer processing queues, particularly at fiscal year-end (December) and RRSP season (January–March).
+
+Common failures at this step:
+- Institution rejects the request: The institution may reject the request for missing information, account restrictions, or internal policy reasons. In this case, the transfer is returned to Wealthsimple and must be resubmitted (see PATTERN 1 in transfer_failure_patterns.txt).
+- Securities flagged as non-transferable in-kind: Institution determines certain holdings cannot be transferred in-kind and must be liquidated first (see PATTERN 2 in transfer_failure_patterns.txt).
+- Request lost in institution's queue: Particularly common with fax-based institutions. Wealthsimple may need to resend the request.
+
+Investigative note: If a transfer has been "In Progress" for more than 3 weeks with no movement, contact Wealthsimple's transfer operations team to initiate a follow-up with the originating institution.
+
+
+STEP 4 — INSTITUTION INITIATES THE TRANSFER
+---------------------------------------------
+Actor: Originating institution
+Action: The originating institution releases the assets. Cash and securities may be sent separately and may arrive at Wealthsimple at different times.
+- Cash arrives via electronic funds transfer (typically 1–2 business days in transit)
+- Securities arrive via electronic book-entry transfer through CDS (Canadian Depository for Securities) or DTC (Depository Trust Company for US-listed securities); timing varies
+
+Important: The originating institution's online portal may show the funds as "transferred out" or the account as closed before Wealthsimple has received and applied the assets. This is normal — there is a transit period between the institution releasing assets and Wealthsimple receiving them.
+
+Common failures at this step:
+- Securities rejected by Wealthsimple's custodian: If a security cannot be held on Wealthsimple's platform, it will be rejected and must be liquidated by the originating institution before retransfer.
+- Partial transfer arrival: Cash arrives but securities do not (or vice versa). The transfer status may appear to stall after partial receipt.
+
+
+STEP 5 — WEALTHSIMPLE RECEIVES AND APPLIES ASSETS
+---------------------------------------------------
+Actor: Wealthsimple operations
+Action: Wealthsimple's operations team receives the incoming assets and applies them to the client's account. Cash is credited directly. Securities are matched to the client's account and positions are established.
+Timing: Asset application typically occurs within 1 business day of receipt.
+
+Potential issues at this step:
+- Asset matching failure: Incoming securities do not match expected holdings (e.g., due to a stock split or name change at the originating institution).
+- Account credit mismatch: The transferred amount does not match the amount on the transfer request (e.g., due to fees deducted by the originating institution).
+
+
+STEP 6 — CONFIRMATION SENT TO CLIENT
+--------------------------------------
+Actor: Wealthsimple (automated)
+Action: Once assets are fully applied, the transfer status is updated to "Completed" and an automated confirmation email is sent to the client's registered email address.
+
+If the client does not receive the confirmation email: Check spam folder and verify the registered email address. If the status shows Completed but the email was not received, the operations team can trigger a manual notification.
+
+
+FEE REIMBURSEMENT (POST-COMPLETION)
+-------------------------------------
+Eligibility: If the total transferred value exceeds $25,000, the client may be eligible for reimbursement of the transfer fee charged by the originating institution.
+Process: Client submits a copy of their final statement from the originating institution showing the transfer fee. The operations team reviews and applies the reimbursement credit. The transfer status will update to include a "Reimbursed" indicator.
