@@ -75,6 +75,11 @@ cp .env.example .env
 # Drop .txt files into knowledge_base/docs/
 
 # 6. Run the app
+
+# Via FastAPI CLI
+fastapi dev app/main.py
+
+# Via UVICORN
 uvicorn app.main:app --reload
 ```
 
