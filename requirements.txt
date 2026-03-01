@@ -4,3 +4,7 @@ chromadb
 cohere
 python-dotenv
 pydantic
+
+# Testing
+pytest
+pytest-asyncio
