@@ -2,8 +2,9 @@
 Pydantic request and response models for the Transfer Investigation Agent.
 """
 
+from typing import List, Literal
+
 from pydantic import BaseModel, Field
-from typing import List
 
 
 # ---------------------------------------------------------------------------
@@ -19,7 +20,7 @@ class IngestResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# /investigate
+# /investigate — request
 # ---------------------------------------------------------------------------
 
 class InvestigateRequest(BaseModel):
@@ -36,6 +37,10 @@ class InvestigateRequest(BaseModel):
     )
 
 
+# ---------------------------------------------------------------------------
+# /investigate — response
+# ---------------------------------------------------------------------------
+
 class Citation(BaseModel):
     """A single source document cited in the investigation output."""
 
@@ -43,25 +48,54 @@ class Citation(BaseModel):
     excerpt: str = Field(..., description="Relevant excerpt from the source document.")
 
 
-class InvestigateResponse(BaseModel):
-    """Structured output of the transfer investigation pipeline."""
+class InvestigationResult(BaseModel):
+    """
+    Structured output of the transfer investigation pipeline.
 
-    timeline: str = Field(
-        ...,
-        description="Reconstructed transfer timeline based on the complaint and retrieved documentation.",
-    )
-    failure_point: str = Field(
-        ...,
-        description="The likely step in the transfer process where the failure occurred.",
-    )
-    draft_response: str = Field(
+    Produced by the query pipeline (app/query.py) and returned by POST /investigate.
+    All fields are for internal ops use. The draft_client_response must not be sent
+    to clients without human review and approval.
+    """
+
+    timeline_reconstruction: str = Field(
         ...,
         description=(
-            "A draft client-facing response for human review and approval. "
-            "Must not be sent to clients without human sign-off."
+            "Step-by-step reconstruction of what likely happened, "
+            "comparing expected process timing against the complaint details."
         ),
     )
-    citations: List[Citation] = Field(
+    failure_point: Literal["wealthsimple", "institution", "client", "unknown"] = Field(
+        ...,
+        description=(
+            "The party most likely responsible for the delay or failure. "
+            "One of: 'wealthsimple', 'institution', 'client', 'unknown'."
+        ),
+    )
+    draft_client_response: str = Field(
+        ...,
+        description=(
+            "Plain-language draft response for the client. "
+            "For human review and approval only — must not be sent automatically."
+        ),
+    )
+    confidence_score: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Model confidence in the analysis (0.0–1.0). "
+            "Reflects completeness of the complaint, strength of documentary evidence, "
+            "and whether the failure point is unambiguous."
+        ),
+    )
+    sources: List[str] = Field(
         default_factory=list,
-        description="Source documents retrieved from the knowledge base that informed this response.",
+        description="Filenames of the knowledge base documents used to inform this analysis.",
+    )
+    escalation_flags: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Fraud indicators, regulatory edge cases, or supervisor-escalation triggers. "
+            "Empty list if none identified."
+        ),
     )

@@ -1,21 +1,22 @@
 """
 Transfer Investigation Agent — FastAPI entry point.
 
-This app exposes two routes:
+Routes:
   POST /ingest        — loads documents from knowledge_base/docs/ into ChromaDB
   POST /investigate   — accepts a transfer complaint and returns a cited draft response
 
 The investigation pipeline uses Cohere's RAG capabilities to:
   1. Retrieve relevant process documentation from the vector store
   2. Reconstruct the transfer timeline from the complaint and retrieved docs
-  3. Identify the likely failure point
-  4. Produce a cited draft response for human review and approval
+  3. Identify the likely failure point (wealthsimple / institution / client / unknown)
+  4. Produce a draft response for human review and approval — never sent automatically
 """
 
 from fastapi import FastAPI
+
 from app.ingest import ingest_documents
+from app.models import IngestResponse, InvestigateRequest, InvestigationResult
 from app.query import run_investigation
-from app.models import IngestResponse, InvestigateRequest, InvestigateResponse
 
 app = FastAPI(
     title="Transfer Investigation Agent",
@@ -34,30 +35,29 @@ async def ingest():
     Trigger document ingestion.
 
     Reads all .txt files from knowledge_base/docs/, chunks them,
-    generates embeddings via Cohere, and upserts them into ChromaDB.
+    generates embeddings via Cohere Embed v3, and upserts them into ChromaDB.
 
-    Returns a summary of how many documents were ingested.
-
-    TODO: implement ingestion logic in app/ingest.py
+    Returns a summary of how many document chunks were ingested.
+    Already-present chunks are skipped (idempotent). Use the --overwrite flag
+    via the CLI to rebuild from scratch.
     """
-    # TODO: call ingest_documents() and return result
     return await ingest_documents()
 
 
-@app.post("/investigate", response_model=InvestigateResponse)
+@app.post("/investigate", response_model=InvestigationResult)
 async def investigate(request: InvestigateRequest):
     """
     Investigate a transfer complaint.
 
     Accepts a free-text complaint describing a transfer issue. The pipeline:
-      1. Embeds the complaint using Cohere
-      2. Retrieves the most relevant process documents from ChromaDB
-      3. Passes complaint + retrieved context to Cohere's chat/RAG endpoint
-      4. Returns a structured response with: timeline, failure point, draft reply, and citations
+      1. Embeds the complaint using Cohere Embed v3
+      2. Retrieves the top 20 candidate chunks from ChromaDB
+      3. Reranks to the top 5 using Cohere Rerank v3
+      4. Passes the complaint + context to Command R+ with a grounded prompt
+      5. Returns a structured result with timeline, failure point, draft reply,
+         confidence score, cited sources, and any escalation flags
 
-    The returned draft is for human review — it must not be sent to clients automatically.
-
-    TODO: implement investigation logic in app/query.py
+    The draft_client_response field is for human review only.
+    It must not be sent to clients without operator approval.
     """
-    # TODO: call run_investigation(request) and return result
     return await run_investigation(request)
