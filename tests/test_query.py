@@ -18,6 +18,7 @@ from app.query import (
     _build_chroma_collection,
     _build_cohere_client,
     _build_messages,
+    _compute_confidence,
     _embed_query,
     _parse_model_output,
     _rerank,
@@ -332,6 +333,72 @@ class TestRerank:
 
 
 # ---------------------------------------------------------------------------
+# _compute_confidence
+# ---------------------------------------------------------------------------
+
+class TestComputeConfidence:
+    """Tests for the rerank-based confidence score computation.
+
+    Cohere Rerank v3 relevance_score values for relevant RAG documents
+    typically fall in the 0.2–0.5 range. _compute_confidence normalises
+    the weighted average against RERANK_SCORE_CEILING (0.5) so that a
+    "good" match maps to an intuitive 70–90% confidence rather than 35–45%.
+    Test values reflect this realistic score range.
+    """
+
+    def test_empty_chunks_returns_zero(self):
+        """With no chunks, confidence is 0.0 — no evidence was retrieved."""
+        assert _compute_confidence([]) == 0.0
+
+    def test_single_chunk_uses_its_score(self):
+        """With one chunk, confidence is the score normalised against RERANK_SCORE_CEILING.
+
+        rerank_score=0.4 → raw=0.4 → 0.4/0.5=0.8 → 0.80
+        """
+        result = _compute_confidence([{"rerank_score": 0.4}])
+        assert result == 0.80
+
+    def test_multiple_chunks_weighted_average(self):
+        """Top chunk is weighted 50%, mean of the rest is weighted 50%, then normalised.
+
+        top=0.45, rest_avg=(0.35+0.25)/2=0.30
+        raw=0.45*0.5+0.30*0.5=0.375  →  0.375/0.5=0.75
+        """
+        chunks = [
+            {"rerank_score": 0.45},
+            {"rerank_score": 0.35},
+            {"rerank_score": 0.25},
+        ]
+        assert _compute_confidence(chunks) == 0.75
+
+    def test_score_clamped_to_max_one(self):
+        """A normalised score above 1.0 is clamped to exactly 1.0.
+
+        rerank_score=0.6 (above RERANK_SCORE_CEILING=0.5) → 0.6/0.5=1.2 → clamped to 1.0
+        """
+        assert _compute_confidence([{"rerank_score": 0.6}]) == 1.0
+
+    def test_score_clamped_to_min_zero(self):
+        """A normalised score below 0.0 is clamped to exactly 0.0."""
+        assert _compute_confidence([{"rerank_score": -0.2}]) == 0.0
+
+    def test_missing_rerank_score_defaults_to_zero(self):
+        """Chunks without a 'rerank_score' key contribute 0.0 to the score."""
+        assert _compute_confidence([{"text": "some text", "source": "doc.txt"}]) == 0.0
+
+    def test_result_rounded_to_two_decimal_places(self):
+        """Confidence is always rounded to 2 decimal places."""
+        chunks = [{"rerank_score": 0.37}, {"rerank_score": 0.23}]
+        result = _compute_confidence(chunks)
+        assert result == round(result, 2)
+
+    def test_same_input_always_returns_same_score(self):
+        """Confidence is deterministic — identical inputs produce identical output."""
+        chunks = [{"rerank_score": 0.42}, {"rerank_score": 0.31}]
+        assert _compute_confidence(chunks) == _compute_confidence(chunks)
+
+
+# ---------------------------------------------------------------------------
 # _build_messages
 # ---------------------------------------------------------------------------
 
@@ -515,13 +582,18 @@ class TestInvestigate:
     """Integration-style tests for the full investigation pipeline."""
 
     def _mock_co(self) -> MagicMock:
-        """Return a Cohere mock pre-configured for the happy path."""
+        """Return a Cohere mock pre-configured for the happy path.
+
+        Rerank scores use realistic Cohere Rerank v3 values (0.2–0.5 range).
+        Expected confidence: top=0.42, rest_avg=0.31
+          raw=0.42*0.5+0.31*0.5=0.365 → 0.365/RERANK_SCORE_CEILING(0.5)=0.73
+        """
         co = MagicMock()
         co.embed.return_value = _make_embed_response()
         co.rerank.return_value = MagicMock(
             results=[
-                _make_rerank_result(index=0, score=0.95),
-                _make_rerank_result(index=1, score=0.88),
+                _make_rerank_result(index=0, score=0.42),
+                _make_rerank_result(index=1, score=0.31),
             ]
         )
         co.chat.return_value = MagicMock(text=json.dumps(VALID_MODEL_JSON))
@@ -541,7 +613,9 @@ class TestInvestigate:
 
         assert isinstance(result, InvestigationResult)
         assert result.failure_point == "institution"
-        assert result.confidence_score == 0.85
+        # Confidence is derived from rerank scores (not model self-report):
+        # top=0.42, rest_avg=0.31, raw=0.365 → 0.365/0.5=0.73
+        assert result.confidence_score == 0.73
         assert len(result.sources) > 0
 
     async def test_pipeline_calls_each_stage_in_order(self):

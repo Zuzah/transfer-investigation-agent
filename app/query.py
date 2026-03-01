@@ -38,6 +38,11 @@ COLLECTION_NAME = "transfer_knowledge"
 CANDIDATE_COUNT = 20   # chunks fetched from ChromaDB before reranking
 RERANK_TOP_N = 5       # chunks kept after Cohere Rerank
 
+# Cohere Rerank v3 relevance_score values for relevant RAG documents typically
+# fall in the 0.2–0.5 range, not 0.7–1.0. Dividing the weighted average by
+# this ceiling maps a "good" match (~0.4) to ~80% confidence instead of ~40%.
+RERANK_SCORE_CEILING = 0.5
+
 VALID_FAILURE_POINTS = {"wealthsimple", "institution", "client", "unknown"}
 
 
@@ -282,6 +287,39 @@ outside the JSON object.
     return system_prompt, user_message
 
 
+def _compute_confidence(chunks: list[dict]) -> float:
+    """
+    Compute a stable, reproducible confidence score from rerank scores.
+
+    Uses a weighted average: the top chunk contributes 50% and the mean of the
+    remaining chunks contributes 50%. This rewards both a strong best match and
+    broad supporting evidence.
+
+    The weighted average is then normalised against RERANK_SCORE_CEILING (0.5)
+    because Cohere Rerank v3 relevance_score values for relevant RAG documents
+    typically fall in the 0.2–0.5 range. Without normalisation a well-matched
+    complaint scores ~35% even when retrieval quality is high. After
+    normalisation a top score of ~0.40 maps to ~80% confidence.
+
+    Rerank scores are deterministic for the same input, so this value is
+    consistent across repeated calls — unlike the model's self-reported score
+    which varies with temperature.
+
+    Args:
+        chunks: Reranked chunks, each expected to have a 'rerank_score' key.
+
+    Returns:
+        Float in [0.0, 1.0], rounded to 2 decimal places.
+    """
+    if not chunks:
+        return 0.0
+    scores = [c.get("rerank_score", 0.0) for c in chunks]
+    top = scores[0]
+    rest_avg = sum(scores[1:]) / len(scores[1:]) if len(scores) > 1 else top
+    raw = top * 0.5 + rest_avg * 0.5
+    return round(min(1.0, max(0.0, raw / RERANK_SCORE_CEILING)), 2)
+
+
 def _parse_model_output(raw: str, chunks: list[dict]) -> InvestigationResult:
     """
     Parse Command R+'s raw text output into an InvestigationResult.
@@ -425,9 +463,16 @@ async def investigate(complaint: str) -> InvestigationResult:
         model="command-r-plus-08-2024",
         message=user_message,
         preamble=system_prompt,
+        temperature=0.0,  # deterministic output — same complaint → same draft
     )
 
     result = _parse_model_output(response.text, top_chunks)
+
+    # Override the model's self-reported confidence with a value derived from
+    # rerank scores, which are deterministic and grounded in evidence quality.
+    result = result.model_copy(
+        update={"confidence_score": _compute_confidence(top_chunks)}
+    )
 
     logger.info(
         "Investigation complete. failure_point=%s confidence=%.2f flags=%s",
