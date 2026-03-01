@@ -586,7 +586,7 @@ class TestInvestigate:
 
     async def test_unparseable_model_response_returns_fallback_not_raise(self):
         """
-        If Command R+ returns something that cannot be parsed as JSON,
+        If Command A returns something that cannot be parsed as JSON,
         investigate() must return a safe fallback InvestigationResult rather
         than propagating a parse error to the caller.
         """

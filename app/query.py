@@ -5,7 +5,7 @@ Pipeline steps:
   1. Embed the complaint using Cohere Embed v3 (search_query input type)
   2. Retrieve the top 20 candidate chunks from ChromaDB
   3. Rerank candidates to the top 5 using Cohere Rerank v3
-  4. Build a grounded prompt for Command R+
+  4. Build a grounded prompt for Command R+ (command-r-plus-08-2024)
   5. Call Command R+ and parse its JSON output into InvestigationResult
 
 The returned InvestigationResult is a draft for human review.
@@ -385,7 +385,7 @@ async def investigate(complaint: str) -> InvestigationResult:
       1. Embed the complaint with Cohere Embed v3 (search_query)
       2. Retrieve the top CANDIDATE_COUNT chunks from ChromaDB
       3. Rerank to the top RERANK_TOP_N chunks with Cohere Rerank v3
-      4. Build a grounded prompt for Command R+
+      4. Build a grounded prompt for Command R+ (command-r-plus-08-2024)
       5. Call Command R+ and parse the JSON output
 
     Args:
@@ -422,7 +422,7 @@ async def investigate(complaint: str) -> InvestigationResult:
     system_prompt, user_message = _build_messages(complaint, top_chunks)
 
     response = co.chat(
-        model="command-r-plus",
+        model="command-r-plus-08-2024",
         message=user_message,
         preamble=system_prompt,
     )

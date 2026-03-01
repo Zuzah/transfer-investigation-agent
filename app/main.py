@@ -117,7 +117,7 @@ async def investigate(request: InvestigateRequest):
       1. Embeds the complaint using Cohere Embed v3
       2. Retrieves the top 20 candidate chunks from ChromaDB
       3. Reranks to the top 5 using Cohere Rerank v3
-      4. Passes the complaint + context to Command R+ with a grounded prompt
+      4. Passes the complaint + context to Command R+ (command-r-plus-08-2024)
       5. Returns a structured result with timeline, failure point, draft reply,
          confidence score, cited sources, and any escalation flags
 
