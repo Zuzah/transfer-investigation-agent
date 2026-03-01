@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: transfer-investigation-agent
+    runtime: python
+    plan: free
+    buildCommand: cd frontend && npm install && npm run build && cd .. && pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      # Pin Python version. Render also respects a .python-version file.
+      - key: PYTHON_VERSION
+        value: "3.11"
+      # Set this in the Render dashboard — do not commit the real value.
+      - key: COHERE_API_KEY
+        sync: false

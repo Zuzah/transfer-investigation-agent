@@ -12,6 +12,7 @@ Static files are served from app/static/.
 """
 
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Query
@@ -32,11 +33,53 @@ logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
+
+# ---------------------------------------------------------------------------
+# Startup — auto-ingest if the knowledge base is empty
+# ---------------------------------------------------------------------------
+
+async def _auto_ingest_if_empty() -> None:
+    """
+    Ingest knowledge base documents on startup if ChromaDB is empty.
+
+    This ensures the app is immediately usable after a cold start (e.g. on
+    Render's free tier where the filesystem resets on each deploy). If the
+    collection already contains chunks, ingestion is skipped. Errors are
+    logged but do not prevent the server from starting.
+    """
+    size = knowledge_base_size()
+    if size > 0:
+        logger.info("Knowledge base ready: %d chunks already indexed.", size)
+        return
+
+    logger.info(
+        "Knowledge base is empty — running auto-ingest. "
+        "This may take 30–60 seconds on first deploy."
+    )
+    try:
+        result = await ingest_documents(overwrite=False)
+        logger.info("Auto-ingest complete: %s", result.message)
+    except Exception as exc:
+        logger.error(
+            "Auto-ingest failed: %s — "
+            "call POST /ingest manually before using /investigate.",
+            exc,
+        )
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """FastAPI lifespan: run startup tasks, then yield to serve requests."""
+    await _auto_ingest_if_empty()
+    yield
+
+
 # ---------------------------------------------------------------------------
 # App initialisation
 # ---------------------------------------------------------------------------
 
 app = FastAPI(
+    lifespan=lifespan,
     title="Transfer Investigation Agent",
     description=(
         "Internal ops tool that investigates stuck/failed transfers, "

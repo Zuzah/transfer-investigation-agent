@@ -1,36 +1,20 @@
 # Transfer Investigation Agent
 
-An internal ops tool that investigates stuck or failed payment transfers, reconstructs the transfer timeline, identifies the likely failure point, and returns a cited draft response for human review and approval.
+An internal ops tool that investigates stuck or failed payment transfers at Wealthsimple. Given a free-text complaint, it retrieves relevant process documentation via Cohere RAG, reconstructs the transfer timeline, identifies the likely failure point, and returns a cited draft response for human review and approval.
+
+The draft is never sent to clients automatically — a human operator must review and approve it first.
 
 ---
 
-## Purpose
+## Stack
 
-When a transfer complaint arrives, this agent:
-
-1. **Retrieves relevant process documentation** from an internal knowledge base using Cohere's embedding and retrieval APIs
-2. **Reconstructs the transfer timeline** from the complaint details and retrieved process rules
-3. **Identifies the likely failure point** — the specific step in the transfer process where something went wrong
-4. **Drafts a professional client-facing response** with citations to the source documents that informed the conclusion
-
-The draft is returned to a human operator for review and approval before any communication is sent to the client.
-
----
-
-## Architecture
-
-```
-POST /ingest
-  └── Reads .txt files from knowledge_base/docs/
-  └── Chunks and embeds via Cohere
-  └── Upserts into ChromaDB
-
-POST /investigate
-  └── Embeds complaint via Cohere
-  └── Retrieves top-K chunks from ChromaDB
-  └── Calls Cohere chat (RAG) with complaint + context
-  └── Returns: timeline, failure point, draft response, citations
-```
+| Layer | Technology |
+|---|---|
+| API | Python 3.11, FastAPI, Uvicorn |
+| AI | Cohere Embed v3, Rerank v3, Command R+ |
+| Vector store | ChromaDB (local persistence) |
+| Frontend | Vite + TypeScript (built into `app/static/`) |
+| Testing | pytest, pytest-asyncio |
 
 ---
 
@@ -38,65 +22,204 @@ POST /investigate
 
 ```
 transfer-investigation-agent/
-  app/
-    main.py          # FastAPI app — route definitions
-    ingest.py        # Document ingestion pipeline
-    query.py         # Investigation pipeline
-    models.py        # Pydantic request/response models
-  knowledge_base/
-    docs/            # Drop .txt process documents here before ingesting
-  tests/
-    test_query.py    # Test stubs — implement as logic is added
-  requirements.txt
-  .env.example
+├── app/
+│   ├── main.py              # FastAPI routes + startup auto-ingest
+│   ├── ingest.py            # Document ingestion pipeline
+│   ├── query.py             # Investigation pipeline (RAG + LLM)
+│   ├── models.py            # Pydantic request/response models
+│   └── static/              # Built frontend (output of `npm run build`)
+├── frontend/                # Vite + TypeScript source
+│   ├── src/
+│   │   ├── main.ts          # DOM wiring and render functions
+│   │   ├── api.ts           # All fetch calls
+│   │   ├── types.ts         # TypeScript interfaces
+│   │   └── style.css        # Wealthsimple-branded styles
+│   ├── index.html
+│   ├── vite.config.ts
+│   └── package.json
+├── knowledge_base/
+│   └── docs/                # Drop .txt process documents here
+├── tests/
+│   └── test_query.py
+├── requirements.txt
+├── render.yaml              # Render deployment blueprint
+├── Procfile                 # Backup start command
+└── .env.example
 ```
 
 ---
 
-## Setup
+## Local Setup
+
+### 1. Clone and enter the repo
 
 ```bash
-# 1. Clone and enter the repo
 git clone <repo-url>
 cd transfer-investigation-agent
+```
 
-# 2. Create and activate a virtual environment
+### 2. Create a Python virtual environment
+
+```bash
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
+```
 
-# 3. Install dependencies
+### 3. Install Python dependencies
+
+```bash
 pip install -r requirements.txt
+```
 
-# 4. Configure environment variables
+### 4. Add your Cohere API key
+
+```bash
 cp .env.example .env
-# Edit .env and add your Cohere API key
+# Open .env and set COHERE_API_KEY=<your key>
+```
 
-# 5. Add process documents
-# Drop .txt files into knowledge_base/docs/
+### 5. Ingest the knowledge base
 
-# 6. Run the app
+The knowledge base must be populated before `/investigate` will work.
 
-# Via FastAPI CLI
+```bash
+python -m app.ingest              # incremental (skips existing chunks)
+python -m app.ingest --overwrite  # wipe and rebuild from scratch
+```
+
+Documents are read from `knowledge_base/docs/`. Add or replace `.txt` files there and re-run ingestion to update the knowledge base.
+
+### 6. Run the app
+
+```bash
 fastapi dev app/main.py
-
-# Via UVICORN
+# or
 uvicorn app.main:app --reload
 ```
 
+Open [http://localhost:8000](http://localhost:8000).
+
 ---
 
-## API
+## Frontend Development
+
+The frontend is a separate Vite + TypeScript project in `frontend/`. During development, Vite's dev server proxies API calls to FastAPI so you only need one browser tab.
+
+```bash
+# Terminal 1 — FastAPI backend
+fastapi dev app/main.py          # http://localhost:8000
+
+# Terminal 2 — Vite dev server (with HMR)
+cd frontend
+npm install
+npm run dev                      # http://localhost:5173  ← open this
+```
+
+To build the frontend for production (output goes to `app/static/`):
+
+```bash
+cd frontend && npm run build
+```
+
+FastAPI already serves `app/static/` at `/`, so no other changes are needed after a build.
+
+---
+
+## Running Tests
+
+```bash
+pytest tests/ -v
+```
+
+All tests mock Cohere and ChromaDB — no API key or live database required.
+
+---
+
+## Deployment on Render
+
+### Prerequisites
+
+- A [Render](https://render.com) account (free tier is sufficient for demo use)
+- A Cohere API key
+
+### Steps
+
+1. Push this repo to GitHub or GitLab.
+
+2. In the Render dashboard, click **New → Blueprint** and connect your repository. Render will detect `render.yaml` automatically and configure the service.
+
+   Alternatively, create a **New Web Service** manually with:
+   - **Runtime:** Python 3
+   - **Build command:** `cd frontend && npm install && npm run build && cd .. && pip install -r requirements.txt`
+   - **Start command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+
+3. In the service's **Environment** tab, add:
+   - `COHERE_API_KEY` = your Cohere API key
+
+4. Deploy. On first start, the app will automatically ingest the knowledge base (see [Startup Auto-Ingest](#startup-auto-ingest) below).
+
+### Startup Auto-Ingest
+
+On startup, `app/main.py` checks whether the ChromaDB collection is empty. If it is, it runs ingestion automatically before serving requests. This means the app is ready to use immediately after a cold start without any manual steps.
+
+You can also trigger ingestion manually at any time by calling `POST /ingest`.
+
+### Knowledge Base Persistence Limitation
+
+> **Important:** ChromaDB uses local filesystem persistence (`./chroma_db/`). On Render's free tier, the filesystem is **ephemeral** — it resets on every deploy and after periods of inactivity.
+
+This means the vector store is rebuilt automatically on each cold start via the startup auto-ingest described above. The rebuild takes 30–60 seconds depending on the size of your knowledge base.
+
+For a production deployment where persistence matters, replace ChromaDB with a managed vector store:
+
+| Option | Notes |
+|---|---|
+| [Chroma Cloud](https://www.trychroma.com/) | Managed ChromaDB — minimal code change |
+| [Pinecone](https://www.pinecone.io/) | Fully managed, generous free tier |
+| [Weaviate Cloud](https://weaviate.io/) | Open-source, managed option available |
+
+---
+
+## API Reference
+
+### `GET /health`
+
+Returns service status and the number of chunks currently in the knowledge base.
+
+```bash
+curl http://localhost:8000/health
+```
+
+```json
+{
+  "status": "ok",
+  "knowledge_base_size": 47
+}
+```
+
+A `knowledge_base_size` of `0` means ingestion has not run yet (or the Chroma collection was reset). Call `POST /ingest` to populate it.
+
+---
 
 ### `POST /ingest`
 
-Reads all `.txt` files from `knowledge_base/docs/`, chunks them, embeds them with Cohere, and loads them into ChromaDB. Run this once after adding or updating documents.
+Reads all `.txt` files from `knowledge_base/docs/`, chunks them (~300 tokens, 50-token overlap), embeds them with Cohere Embed v3, and upserts into ChromaDB.
 
-**Response**
+**The knowledge base must be ingested before `/investigate` will return meaningful results.**
+
+```bash
+# Incremental — skips chunks already present
+curl -X POST http://localhost:8000/ingest
+
+# Wipe and rebuild from scratch
+curl -X POST "http://localhost:8000/ingest?overwrite=true"
+```
+
 ```json
 {
-  "success": true,
-  "documents_ingested": 42,
-  "message": "Ingestion complete."
+  "status": "success",
+  "chunks_indexed": 47,
+  "message": "Ingested 47 chunk(s) from 4 document(s) into collection 'transfer_knowledge'."
 }
 ```
 
@@ -104,53 +227,37 @@ Reads all `.txt` files from `knowledge_base/docs/`, chunks them, embeds them wit
 
 ### `POST /investigate`
 
-Accepts a transfer complaint and returns a structured investigation output.
+Accepts a free-text transfer complaint (minimum 20 characters) and returns a structured investigation result.
 
-**Request**
+```bash
+curl -X POST http://localhost:8000/investigate \
+  -H "Content-Type: application/json" \
+  -d '{"complaint": "Client transferred their RRSP from TD Bank 3 weeks ago. Status shows Transferring but nothing has arrived. Client says TD confirmed funds left their account 2 weeks ago."}'
+```
+
 ```json
 {
-  "complaint": "Customer reports transfer of $4,200 to account ending 8821 initiated on 2024-11-03 has not arrived after 5 business days."
+  "timeline_reconstruction": "Week 1: Transfer initiated at Wealthsimple...",
+  "failure_point": "institution",
+  "draft_client_response": "Thank you for reaching out...\n\nAGENT MUST VERIFY: confirm transfer reference number with TD.",
+  "confidence_score": 0.78,
+  "sources": [
+    "institutional_transfer_process.txt",
+    "transfer_timelines.txt"
+  ],
+  "escalation_flags": []
 }
 ```
 
-**Response**
-```json
-{
-  "timeline": "...",
-  "failure_point": "...",
-  "draft_response": "...",
-  "citations": [
-    {
-      "document_name": "wire-transfer-sla.txt",
-      "excerpt": "..."
-    }
-  ]
-}
-```
+**Field reference:**
 
-> **Important:** The `draft_response` field is for human review only. Do not send it to clients without operator approval.
+| Field | Type | Description |
+|---|---|---|
+| `timeline_reconstruction` | string | Step-by-step reconstruction of what likely happened |
+| `failure_point` | `wealthsimple` \| `institution` \| `client` \| `unknown` | Where the transfer likely broke down |
+| `draft_client_response` | string | Plain-language draft for human review. Ends with `AGENT MUST VERIFY:` checklist |
+| `confidence_score` | float 0–1 | Derived from Cohere rerank scores — deterministic for the same complaint |
+| `sources` | string[] | Knowledge base documents cited in the analysis |
+| `escalation_flags` | string[] | e.g. `large_transaction_review`, `regulatory_reporting_required` |
 
----
-
-## Development Status
-
-- [x] Project scaffold and route definitions
-- [ ] Document ingestion pipeline (`app/ingest.py`)
-- [ ] Investigation query pipeline (`app/query.py`)
-- [ ] Prompt engineering and response parsing
-- [ ] Test implementation (`tests/test_query.py`)
-- [ ] Error handling and logging
-- [ ] Deployment configuration
-
----
-
-## Dependencies
-
-| Package | Purpose |
-|---|---|
-| `fastapi` | Web framework |
-| `uvicorn` | ASGI server |
-| `chromadb` | Local vector store |
-| `cohere` | Embeddings and RAG chat |
-| `python-dotenv` | Environment variable loading |
-| `pydantic` | Request/response validation |
+> **The `draft_client_response` must not be sent to clients without operator review and approval.**
