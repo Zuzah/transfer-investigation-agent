@@ -657,7 +657,7 @@ class TestHTTPEndpoints:
 
     def test_post_investigate_returns_422_for_short_complaint(self):
         """
-        POST /investigate with a complaint shorter than 10 characters must
+        POST /investigate with a complaint shorter than 20 characters must
         return 422 — Pydantic's min_length validation rejects it before the
         pipeline is invoked.
         """
@@ -702,7 +702,7 @@ class TestHTTPEndpoints:
     def test_post_ingest_returns_200(self):
         """
         POST /ingest with all dependencies mocked returns 200 and an
-        IngestResponse with a boolean success field.
+        IngestRouteResponse with status, chunks_indexed, and message fields.
         """
         mock_co = MagicMock()
         mock_collection = MagicMock()
@@ -724,6 +724,6 @@ class TestHTTPEndpoints:
 
         assert response.status_code == 200
         body = response.json()
-        assert "success" in body
-        assert isinstance(body["success"], bool)
-        assert "documents_ingested" in body
+        assert body["status"] == "success"
+        assert "chunks_indexed" in body
+        assert isinstance(body["chunks_indexed"], int)

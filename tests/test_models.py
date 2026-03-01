@@ -25,12 +25,12 @@ class TestInvestigateRequest:
         assert req.complaint.startswith("Transfer")
 
     def test_complaint_at_exact_minimum_length_is_accepted(self):
-        """A complaint of exactly 10 characters (the minimum) is valid."""
-        req = InvestigateRequest(complaint="1234567890")
-        assert len(req.complaint) == 10
+        """A complaint of exactly 20 characters (the minimum) is valid."""
+        req = InvestigateRequest(complaint="12345678901234567890")
+        assert len(req.complaint) == 20
 
     def test_complaint_below_minimum_length_raises(self):
-        """A complaint shorter than 10 characters must raise a ValidationError."""
+        """A complaint shorter than 20 characters must raise a ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
             InvestigateRequest(complaint="too short")
         errors = exc_info.value.errors()
