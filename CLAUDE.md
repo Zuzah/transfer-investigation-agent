@@ -9,13 +9,30 @@ the likely failure point, and returns a cited draft response for human review.
 - Cohere (Embed v3, Rerank, Command R+)
 - ChromaDB (local vector store, persists to ./chroma_db/)
 - pytest for testing
+- Vite + TypeScript (frontend, lives in frontend/)
 
 ## Dev Workflow
 
-### Running the app
+### Running the app (production build)
 ```bash
 fastapi dev app/main.py
 ```
+
+### Running the app (active frontend development — two terminals)
+```bash
+# Terminal 1 — backend
+fastapi dev app/main.py          # http://localhost:8000
+
+# Terminal 2 — frontend
+cd frontend && npm run dev       # http://localhost:5173 (open this in browser)
+```
+Vite proxies `/investigate`, `/ingest`, and `/health` to FastAPI automatically.
+
+### Building the frontend
+```bash
+cd frontend && npm run build     # compiles TypeScript → app/static/
+```
+Run this before starting FastAPI if you want to serve the latest frontend from http://localhost:8000.
 
 ### Running tests
 ```bash
@@ -27,6 +44,15 @@ pytest tests/ -v
 python -m app.ingest              # incremental
 python -m app.ingest --overwrite  # rebuild from scratch
 ```
+
+## Frontend
+
+- Vite + TypeScript lives in `frontend/`
+- Dev: `npm run dev` from `frontend/` (port 5173, proxies API calls to port 8000)
+- Build: `npm run build` from `frontend/` (outputs compiled files to `app/static/`)
+- Never put API calls in `index.html` — all fetch calls go in `frontend/src/api.ts`
+- TypeScript interfaces mirroring `app/models.py` live in `frontend/src/types.ts` — keep them in sync when models change
+- Future migration target: React via Next.js (`types.ts` and `api.ts` carry over unchanged)
 
 ## Test-Driven Development
 
