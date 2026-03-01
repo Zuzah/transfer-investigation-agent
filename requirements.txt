@@ -5,6 +5,8 @@ cohere
 python-dotenv
 pydantic
 
+aiofiles
+
 # Testing
 pytest
 pytest-asyncio

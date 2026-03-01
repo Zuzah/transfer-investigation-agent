@@ -2,21 +2,39 @@
 Transfer Investigation Agent — FastAPI entry point.
 
 Routes:
-  POST /ingest        — loads documents from knowledge_base/docs/ into ChromaDB
-  POST /investigate   — accepts a transfer complaint and returns a cited draft response
+  GET  /          — serves the operator UI (app/static/index.html)
+  GET  /health    — returns service status and knowledge base chunk count
+  POST /ingest    — loads knowledge_base/docs/ into ChromaDB (?overwrite=false)
+  POST /investigate — accepts a complaint and returns a cited draft response
 
-The investigation pipeline uses Cohere's RAG capabilities to:
-  1. Retrieve relevant process documentation from the vector store
-  2. Reconstruct the transfer timeline from the complaint and retrieved docs
-  3. Identify the likely failure point (wealthsimple / institution / client / unknown)
-  4. Produce a draft response for human review and approval — never sent automatically
+CORS is open (internal demo tool — not exposed to the public internet).
+Static files are served from app/static/.
 """
 
-from fastapi import FastAPI
+import logging
+from pathlib import Path
+
+from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.ingest import ingest_documents
-from app.models import IngestResponse, InvestigateRequest, InvestigationResult
-from app.query import run_investigation
+from app.models import (
+    HealthResponse,
+    IngestRouteResponse,
+    InvestigateRequest,
+    InvestigationResult,
+)
+from app.query import knowledge_base_size, run_investigation
+
+logger = logging.getLogger(__name__)
+
+STATIC_DIR = Path(__file__).parent / "static"
+
+# ---------------------------------------------------------------------------
+# App initialisation
+# ---------------------------------------------------------------------------
 
 app = FastAPI(
     title="Transfer Investigation Agent",
@@ -28,20 +46,66 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# CORS — open for all origins (internal demo only; restrict in production)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.post("/ingest", response_model=IngestResponse)
-async def ingest():
+# Static files — served at /static, index.html at /
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
+@app.get("/", include_in_schema=False)
+async def serve_ui():
+    """Serve the operator UI from app/static/index.html."""
+    return FileResponse(str(STATIC_DIR / "index.html"))
+
+
+@app.get("/health", response_model=HealthResponse)
+async def health():
     """
-    Trigger document ingestion.
+    Return service health and knowledge base readiness.
 
-    Reads all .txt files from knowledge_base/docs/, chunks them,
-    generates embeddings via Cohere Embed v3, and upserts them into ChromaDB.
-
-    Returns a summary of how many document chunks were ingested.
-    Already-present chunks are skipped (idempotent). Use the --overwrite flag
-    via the CLI to rebuild from scratch.
+    knowledge_base_size is the number of chunks in the ChromaDB collection.
+    A value of 0 means ingestion has not been run yet.
     """
-    return await ingest_documents()
+    return HealthResponse(
+        status="ok",
+        knowledge_base_size=knowledge_base_size(),
+    )
+
+
+@app.post("/ingest", response_model=IngestRouteResponse)
+async def ingest(
+    overwrite: bool = Query(
+        default=False,
+        description=(
+            "If true, deletes the existing ChromaDB collection and rebuilds it "
+            "from scratch. If false (default), skips chunks already present."
+        ),
+    ),
+):
+    """
+    Trigger document ingestion from knowledge_base/docs/.
+
+    Reads all .txt files, chunks them (~300 tokens, 50-token overlap),
+    embeds via Cohere Embed v3, and upserts into ChromaDB.
+
+    Use ?overwrite=true to delete and rebuild the collection from scratch.
+    """
+    result = await ingest_documents(overwrite=overwrite)
+    return IngestRouteResponse(
+        status="success",
+        chunks_indexed=result.documents_ingested,
+        message=result.message,
+    )
 
 
 @app.post("/investigate", response_model=InvestigationResult)
@@ -49,7 +113,7 @@ async def investigate(request: InvestigateRequest):
     """
     Investigate a transfer complaint.
 
-    Accepts a free-text complaint describing a transfer issue. The pipeline:
+    Accepts a free-text complaint (minimum 20 characters). The pipeline:
       1. Embeds the complaint using Cohere Embed v3
       2. Retrieves the top 20 candidate chunks from ChromaDB
       3. Reranks to the top 5 using Cohere Rerank v3
@@ -60,4 +124,20 @@ async def investigate(request: InvestigateRequest):
     The draft_client_response field is for human review only.
     It must not be sent to clients without operator approval.
     """
-    return await run_investigation(request)
+    # Log complaint preview (truncated) and confidence on completion — never the full text.
+    logger.info("Received complaint: %.100s...", request.complaint)
+
+    result = await run_investigation(request)
+
+    logger.info(
+        "Investigation complete — failure_point=%s confidence=%.2f",
+        result.failure_point,
+        result.confidence_score,
+    )
+    print(
+        f"[investigate] complaint={request.complaint[:100]!r}... "
+        f"failure_point={result.failure_point} "
+        f"confidence={result.confidence_score:.2f}"
+    )
+
+    return result

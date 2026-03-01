@@ -12,11 +12,33 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 
 class IngestResponse(BaseModel):
-    """Response returned after document ingestion."""
+    """Internal pipeline response returned by ingest_documents()."""
 
     success: bool = Field(..., description="Whether ingestion completed without errors.")
     documents_ingested: int = Field(..., description="Number of document chunks upserted into ChromaDB.")
     message: str = Field(..., description="Human-readable status message.")
+
+
+class IngestRouteResponse(BaseModel):
+    """HTTP response returned by POST /ingest."""
+
+    status: str = Field(..., description="'success' or 'error'.")
+    chunks_indexed: int = Field(..., description="Number of new chunks added to the collection.")
+    message: str = Field(..., description="Human-readable status message.")
+
+
+# ---------------------------------------------------------------------------
+# /health
+# ---------------------------------------------------------------------------
+
+class HealthResponse(BaseModel):
+    """Response returned by GET /health."""
+
+    status: str = Field(default="ok", description="Always 'ok' if the service is running.")
+    knowledge_base_size: int = Field(
+        ...,
+        description="Number of chunks currently stored in the ChromaDB collection. 0 if not yet ingested.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -28,7 +50,7 @@ class InvestigateRequest(BaseModel):
 
     complaint: str = Field(
         ...,
-        min_length=10,
+        min_length=20,
         description=(
             "Free-text description of the transfer complaint. "
             "Should include any available reference numbers, dates, amounts, and parties involved."

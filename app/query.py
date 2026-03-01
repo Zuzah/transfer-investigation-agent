@@ -452,3 +452,21 @@ async def run_investigation(request: InvestigateRequest) -> InvestigationResult:
         InvestigationResult from the investigation pipeline.
     """
     return await investigate(request.complaint)
+
+
+def knowledge_base_size() -> int:
+    """
+    Return the number of chunks currently stored in the ChromaDB collection.
+
+    Used by GET /health to report knowledge base readiness.
+    Returns 0 if the collection has not yet been created (ingest not yet run)
+    rather than raising, so the health endpoint always responds.
+
+    Returns:
+        Integer count of stored chunks, or 0 if the collection is absent.
+    """
+    try:
+        collection = _build_chroma_collection()
+        return collection.count()
+    except RuntimeError:
+        return 0
