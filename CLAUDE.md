@@ -1,0 +1,64 @@
+# Transfer Investigation Agent
+
+Internal ops tool that takes a Wealthsimple transfer complaint, retrieves relevant 
+process documentation via Cohere RAG, reconstructs the transfer timeline, identifies 
+the likely failure point, and returns a cited draft response for human review.
+
+## Stack
+- Python + FastAPI
+- Cohere (Embed v3, Rerank, Command R+)
+- ChromaDB (local vector store, persists to ./chroma_db/)
+- pytest for testing
+
+## Dev Workflow
+
+### Running the app
+```bash
+fastapi dev app/main.py
+```
+
+### Running tests
+```bash
+pytest tests/ -v
+```
+
+### Ingesting the knowledge base
+```bash
+python -m app.ingest              # incremental
+python -m app.ingest --overwrite  # rebuild from scratch
+```
+
+## Test-Driven Development
+
+Always follow TDD:
+1. Write a failing test first
+2. Implement only enough to make it pass
+3. Refactor, confirm tests still pass
+
+**Mock all external calls.** Tests must run without a Cohere API key or live ChromaDB.
+Use `unittest.mock` or `pytest-mock` to mock:
+- `cohere.Client` and all its methods
+- `chromadb.PersistentClient` and collection methods
+
+Each test must have a docstring explaining what it verifies.
+
+Cover at minimum:
+- Happy path
+- Empty or missing input
+- API failure (simulate Cohere throwing an exception)
+- Edge cases specific to the function
+
+## Code Style
+- Type hints on all functions
+- Docstrings on all public functions
+- Pydantic models for all request/response shapes (defined in models.py)
+- Environment variables loaded via python-dotenv, never hardcoded
+- Raise descriptive exceptions — no silent failures
+
+## Boundaries (Do Not Cross)
+- The AI drafts responses. It never sends them.
+- Financial remedy logic must never be automated — always a human decision.
+- Do not log full complaint text to console — truncate to 100 chars max.
+
+## After Every Mistake
+End your correction with: "Update CLAUDE.md so you don't make this mistake again."
