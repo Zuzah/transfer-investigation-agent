@@ -46,73 +46,11 @@ from app.models import (
     InvestigationResult,
 )
 from app.query import knowledge_base_size, run_investigation
+from app.seeds import SEED_CASES
 
 logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
-
-# ---------------------------------------------------------------------------
-# Demo seed data — mirrors the hardcoded COMPLAINTS in the frontend queue
-# ---------------------------------------------------------------------------
-
-_SEED_CASES = [
-    {
-        "client_id": "Client #4821",
-        "category": "Institutional Delay",
-        "complaint": (
-            "Client transferred their RRSP from TD Bank 3 weeks ago. Status shows "
-            "Transferring but nothing has arrived. Client says TD confirmed funds left "
-            "their account 2 weeks ago."
-        ),
-    },
-    {
-        "client_id": "Client #3307",
-        "category": "Wire Transfer Issue",
-        "complaint": (
-            "Client sent a wire transfer yesterday morning, received same-day confirmation "
-            "email, funds still not showing in account after 24 hours."
-        ),
-    },
-    {
-        "client_id": "Client #5512",
-        "category": "Missing Funds",
-        "complaint": (
-            "Client initiated a PAD deposit of $4,500 six business days ago. Bank confirms "
-            "debit was taken but funds are not reflected in Wealthsimple balance."
-        ),
-    },
-    {
-        "client_id": "Client #2198",
-        "category": "Account Restriction",
-        "complaint": (
-            "Client account was flagged and restricted after a large TFSA transfer. Client "
-            "has not received any communication and cannot access their account."
-        ),
-    },
-    {
-        "client_id": "Client #6643",
-        "category": "Transfer Rejected",
-        "complaint": (
-            "Client attempted to move TFSA from RBC. Transfer was rejected but client was "
-            "not notified. Discovered only after checking status in app."
-        ),
-    },
-    {
-        # All 4 specificity signals present: amount + date + institution + reference.
-        # Designed to demonstrate a high-confidence (~90%) investigation result.
-        "client_id": "Client #7719",
-        "category": "Institutional Delay",
-        "complaint": (
-            "Client initiated a full transfer of their non-registered investment account "
-            "from RBC Direct Investing on 2025-01-14, for a total value of $12,450. "
-            "Wealthsimple issued confirmation ref #WS-20250114-8831 the same day. "
-            "As of today, 15 business days have elapsed and the assets have not appeared "
-            "in the Wealthsimple account. RBC confirmed on 2025-01-28 that the transfer "
-            "request was accepted and the account was debited. Client is requesting an "
-            "urgent status update as the funds are inaccessible during the transfer period."
-        ),
-    },
-]
 
 
 # ---------------------------------------------------------------------------
@@ -474,7 +412,7 @@ async def admin_reset(session: AsyncSession = Depends(get_session)):
     """
     Reset the demo database.
 
-    Deletes all existing cases and re-seeds with 5 representative demo cases.
+    Deletes all existing cases and re-seeds with demo cases from app/seeds.py.
     This is a destructive operation — all investigation results and actions
     are permanently removed.
     """
@@ -485,12 +423,12 @@ async def admin_reset(session: AsyncSession = Depends(get_session)):
     await session.flush()
 
     # Insert seed cases
-    for seed in _SEED_CASES:
+    for seed in SEED_CASES:
         session.add(Case(**seed))
     await session.flush()
 
-    logger.info("Admin reset complete — %d demo cases seeded.", len(_SEED_CASES))
+    logger.info("Admin reset complete — %d demo cases seeded.", len(SEED_CASES))
     return AdminResetResponse(
-        seeded=len(_SEED_CASES),
-        message=f"Database reset. {len(_SEED_CASES)} demo cases seeded.",
+        seeded=len(SEED_CASES),
+        message=f"Database reset. {len(SEED_CASES)} demo cases seeded.",
     )
