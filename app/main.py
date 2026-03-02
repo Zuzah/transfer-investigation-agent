@@ -432,3 +432,19 @@ async def admin_reset(session: AsyncSession = Depends(get_session)):
         seeded=len(SEED_CASES),
         message=f"Database reset. {len(SEED_CASES)} demo cases seeded.",
     )
+
+
+# ---------------------------------------------------------------------------
+# Static file fallback — serves everything in app/static/ not matched above.
+# This handles:
+#   - /wealthsimple-logo.webp (and any other public/ assets)
+#   - /client.txt, /analyst.txt, /admin.txt (Next.js App Router RSC payloads)
+#   - Any other flat static files copied from frontend/public/ during build
+# Must come LAST — explicit routes above take priority over this mount.
+# ---------------------------------------------------------------------------
+if STATIC_DIR.exists():
+    app.mount(
+        "/",
+        StaticFiles(directory=str(STATIC_DIR), html=True),
+        name="static_fallback",
+    )
