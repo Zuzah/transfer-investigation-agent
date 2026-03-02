@@ -48,3 +48,21 @@ export interface HealthResponse {
   status: string;
   knowledge_base_size: number;
 }
+
+// ---------------------------------------------------------------------------
+// Complaint queue (UI only — not part of the backend API contract)
+// ---------------------------------------------------------------------------
+
+export type TriageCategory =
+  | "Institutional Delay"
+  | "Wire Transfer Issue"
+  | "Missing Funds"
+  | "Account Restriction"
+  | "Transfer Rejected";
+
+export interface QueuedComplaint {
+  id: string;
+  clientId: string;
+  category: TriageCategory;
+  text: string;
+}

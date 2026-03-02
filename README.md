@@ -13,7 +13,7 @@ The draft is never sent to clients automatically — a human operator must revie
 | API | Python 3.11, FastAPI, Uvicorn |
 | AI | Cohere Embed v3, Rerank v3, Command R+ |
 | Vector store | ChromaDB (local persistence) |
-| Frontend | Vite + TypeScript (built into `app/static/`) |
+| Frontend | Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS |
 | Testing | pytest, pytest-asyncio |
 
 ---
@@ -28,14 +28,23 @@ transfer-investigation-agent/
 │   ├── query.py             # Investigation pipeline (RAG + LLM)
 │   ├── models.py            # Pydantic request/response models
 │   └── static/              # Built frontend (output of `npm run build`)
-├── frontend/                # Vite + TypeScript source
-│   ├── src/
-│   │   ├── main.ts          # DOM wiring and render functions
-│   │   ├── api.ts           # All fetch calls
-│   │   ├── types.ts         # TypeScript interfaces
-│   │   └── style.css        # Wealthsimple-branded styles
-│   ├── index.html
-│   ├── vite.config.ts
+├── frontend/                # Next.js 14 (App Router) source
+│   ├── app/
+│   │   ├── layout.tsx       # Root layout (Tailwind, metadata)
+│   │   ├── page.tsx         # Two-panel investigation workspace
+│   │   └── api/             # Next.js route handlers (proxy to FastAPI)
+│   ├── components/
+│   │   ├── ComplaintQueue.tsx    # Left panel — 5 queued complaints
+│   │   ├── ComplaintInput.tsx    # Controlled textarea + submit button
+│   │   ├── WorkflowStepper.tsx   # 5-step horizontal progress tracker
+│   │   ├── ResultsPanel.tsx      # Investigation results + urgency badge
+│   │   ├── ConfidenceScore.tsx   # Confidence bar
+│   │   └── SourcesList.tsx       # Cited sources list
+│   ├── lib/
+│   │   ├── api.ts           # All fetch calls (no fetch elsewhere)
+│   │   └── types.ts         # TypeScript interfaces (mirrors models.py)
+│   ├── next.config.mjs
+│   ├── tailwind.config.ts
 │   └── package.json
 ├── knowledge_base/
 │   └── docs/                # Drop .txt process documents here
@@ -103,16 +112,16 @@ Open [http://localhost:8000](http://localhost:8000).
 
 ## Frontend Development
 
-The frontend is a separate Vite + TypeScript project in `frontend/`. During development, Vite's dev server proxies API calls to FastAPI so you only need one browser tab.
+The frontend is a Next.js 14 project in `frontend/`. During development, Next.js route handlers in `frontend/app/api/` proxy API calls to FastAPI, so you only need one browser tab.
 
 ```bash
 # Terminal 1 — FastAPI backend
 fastapi dev app/main.py          # http://localhost:8000
 
-# Terminal 2 — Vite dev server (with HMR)
+# Terminal 2 — Next.js dev server (with HMR)
 cd frontend
 npm install
-npm run dev                      # http://localhost:5173  ← open this
+npm run dev                      # http://localhost:3000  ← open this
 ```
 
 To build the frontend for production (output goes to `app/static/`):
@@ -121,7 +130,7 @@ To build the frontend for production (output goes to `app/static/`):
 cd frontend && npm run build
 ```
 
-FastAPI already serves `app/static/` at `/`, so no other changes are needed after a build.
+`NEXT_STATIC=1` is set automatically by the build script. FastAPI serves `app/static/` at `/` when the directory exists.
 
 ---
 
@@ -150,7 +159,7 @@ All tests mock Cohere and ChromaDB — no API key or live database required.
 
    Alternatively, create a **New Web Service** manually with:
    - **Runtime:** Python 3
-   - **Build command:** `cd frontend && npm install && npm run build && cd .. && pip install -r requirements.txt`
+   - **Build command:** `pip install -r requirements.txt && cd frontend && npm install && npm run build`
    - **Start command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 
 3. In the service's **Environment** tab, add:
