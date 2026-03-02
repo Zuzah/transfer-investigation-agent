@@ -45,6 +45,15 @@ RERANK_TOP_N = 5       # chunks kept after Cohere Rerank
 RERANK_SCORE_CEILING = 0.20
 
 VALID_FAILURE_POINTS = {"wealthsimple", "institution", "client", "unknown"}
+VALID_RECOMMENDED_ACTIONS = {"send_response", "escalate", "investigate_further"}
+VALID_DEPARTMENTS = {
+    "Payment Operations",
+    "Compliance & AML",
+    "Client Relations",
+    "Banking Operations",
+    "Risk Management",
+    "Regulatory Reporting",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -220,15 +229,38 @@ No internal jargon, no system names, no process step numbers. \
 Write as if speaking directly to the client, but remember this is a DRAFT for a human agent to review.
 4. End the draft_client_response with a line explicitly stating what the \
 human agent must verify or confirm before approving and sending the response.
-5. Assign a confidence_score between 0.0 and 1.0. \
-Lower confidence if: the complaint lacks dates or amounts, the failure point is ambiguous, \
-or multiple explanations are equally plausible.
+5. Assign a confidence_score between 0.0 and 1.0 reflecting actual evidence present in the \
+complaint. A vague complaint with no specific amounts, dates, or institution names warrants a \
+score below 0.30. Do not assign high confidence when you cannot verify key facts from the text.
 6. Populate escalation_flags with any of the following if applicable: \
 "potential_fraud", "regulatory_reporting_required", "supervisor_approval_required", \
 "large_transaction_review", "account_restriction_possible", or any other specific flag \
 warranted by the complaint. Use an empty array if none apply.
 7. Financial remedy decisions (refunds, fee waivers, compensation) are NOT your role. \
 Never suggest or promise a remedy in the draft. A human will make that decision.
+8. recommended_action: choose exactly one of the following based on your analysis:
+   send_response       — failure point is clear, no fraud flags, confidence would be ≥ 0.70
+   escalate            — potential_fraud flag present, OR regulatory flag present, OR low confidence
+   investigate_further — failure point is unknown, OR confidence would be 0.50–0.69 with ambiguity
+9. relevant_departments: choose ALL that apply from this fixed list only: \
+"Payment Operations", "Compliance & AML", "Client Relations", \
+"Banking Operations", "Risk Management", "Regulatory Reporting". \
+Use an empty array when recommended_action is send_response.
+10. In timeline_reconstruction, bold 4–8 of the most decision-critical facts using **phrase** \
+markdown: amounts, dates, institution names, key status labels, and required action items. \
+Use ** sparingly — only the phrases an analyst absolutely must not overlook.
+11. Apply "Insufficient complaint detail" ONLY when the complaint genuinely lacks at least two of \
+these four operational facts: (a) transfer amount, (b) transfer initiation date or timeframe, \
+(c) source institution name, (d) reference or confirmation number. If the complaint contains all \
+four, proceed with full timeline reconstruction — do NOT flag missing timestamps for every \
+individual communication step. An initiation date and one corroborating date are sufficient.
+12. When both the source institution and Wealthsimple have confirmed their respective actions \
+(e.g. institution confirms transfer accepted / funds debited; Wealthsimple issued a confirmation \
+number) but funds have not arrived beyond the expected processing timeline, do NOT ask the client \
+for more information. In this case: set failure_point to "institution" or "wealthsimple", set \
+recommended_action to "investigate_further", add "Payment Operations" to relevant_departments, \
+and draft a response explaining that Wealthsimple is tracing the transfer internally and will \
+follow up — the client does not need to take any further action.
 """
 
     context_blocks = []
@@ -278,7 +310,11 @@ agent should confirm before sending this response.>",
 
   "confidence_score": <float between 0.0 and 1.0>,
 
-  "escalation_flags": [<list of flag strings, or empty array>]
+  "escalation_flags": [<list of flag strings, or empty array>],
+
+  "recommended_action": "<Exactly one of: send_response | escalate | investigate_further>",
+
+  "relevant_departments": [<departments from the fixed list, or empty array>]
 }}
 
 Return only valid JSON. Do not include markdown fences, commentary, or any text \
@@ -320,6 +356,98 @@ def _compute_confidence(chunks: list[dict]) -> float:
     rest_avg = sum(scores[1:]) / len(scores[1:]) if len(scores) > 1 else top
     raw = top * 0.5 + rest_avg * 0.5
     return round(min(1.0, max(0.0, raw / RERANK_SCORE_CEILING)), 2)
+
+
+# ---------------------------------------------------------------------------
+# Complaint specificity signals (compiled once at import time)
+# ---------------------------------------------------------------------------
+
+_AMOUNT_RE = re.compile(
+    r"\$[\d,]+"                         # $4,200
+    r"|\b\d[\d,]*\s*dollars?\b",        # 500 dollars
+    re.IGNORECASE,
+)
+
+_DATE_RE = re.compile(
+    r"\b20\d{2}\b"                                                  # year: 2024
+    r"|\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may"
+    r"|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?"
+    r"|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b"                 # month name
+    r"|\b\d+\s+(?:business\s+)?days?\b"                            # "5 business days"
+    r"|\b\d+\s+weeks?\b"                                            # "3 weeks"
+    r"|\b(?:yesterday|last\s+\w+|this\s+\w+|today)\b",             # relative date
+    re.IGNORECASE,
+)
+
+_INSTITUTION_RE = re.compile(
+    r"\b(?:TD\s*(?:Bank|Canada\s*Trust)?"
+    r"|Royal\s*Bank|RBC"
+    r"|BMO|Bank\s*of\s*Montreal"
+    r"|CIBC"
+    r"|Scotiabank|Scotia"
+    r"|National\s*Bank|NBC"
+    r"|HSBC"
+    r"|Desjardins|Caisse\s*Populaire"
+    r"|Tangerine"
+    r"|EQ\s*Bank"
+    r"|Simplii"
+    r"|Meridian"
+    r"|ATB\s*Financial|ATB"
+    r"|Laurentian"
+    r"|Credit\s*Union"
+    r"|Questrade"
+    r"|ICICI)\b",
+    re.IGNORECASE,
+)
+
+_REFERENCE_RE = re.compile(
+    r"(?:reference|ref|confirmation|conf|ticket|case|transaction|txn|order)"
+    r"\s*[#:\s]\s*\d+"                   # "ref #1234567", "ticket: 98765"
+    r"|\b[A-Z]{2,4}\d{6,}\b",           # alphanumeric codes like TXN123456
+    re.IGNORECASE,
+)
+
+# Maps number of detected signals (0–4) to a specificity multiplier.
+_SPECIFICITY_SCALE = [0.05, 0.50, 0.80, 0.95, 1.00]
+
+
+def _complaint_specificity(complaint: str) -> float:
+    """
+    Estimate how specific the complaint is by counting verifiable detail signals.
+
+    Checks for four concrete identifier types:
+      1. A dollar amount  ($4,200 / 500 dollars)
+      2. A date or time reference  (2024-11-03 / 5 business days / last Tuesday)
+      3. A known external institution name  (TD Bank, RBC, BMO, CIBC, …)
+      4. A reference or confirmation number  (ref #1234567 / ticket 98765)
+
+    Signal count → specificity multiplier:
+      0 → 0.05   (complaint is too vague to analyse reliably)
+      1 → 0.50
+      2 → 0.80
+      3 → 0.95
+      4 → 1.00
+
+    The multiplier is applied to the retrieval-based confidence score in
+    investigate(), so a vague complaint cannot score high regardless of how
+    well the knowledge base documents match the query.
+
+    Args:
+        complaint: The free-text complaint string.
+
+    Returns:
+        Float in [0.05, 1.00].
+    """
+    signals = 0
+    if _AMOUNT_RE.search(complaint):
+        signals += 1
+    if _DATE_RE.search(complaint):
+        signals += 1
+    if _INSTITUTION_RE.search(complaint):
+        signals += 1
+    if _REFERENCE_RE.search(complaint):
+        signals += 1
+    return _SPECIFICITY_SCALE[signals]
 
 
 def _parse_model_output(raw: str, chunks: list[dict]) -> InvestigationResult:
@@ -383,6 +511,8 @@ def _parse_model_output(raw: str, chunks: list[dict]) -> InvestigationResult:
             confidence_score=0.0,
             sources=sources,
             escalation_flags=["model_output_parse_failure", "manual_review_required"],
+            recommended_action="investigate_further",
+            relevant_departments=["Payment Operations"],
         )
 
     # --- Validate and normalise failure_point ---
@@ -403,6 +533,17 @@ def _parse_model_output(raw: str, chunks: list[dict]) -> InvestigationResult:
     else:
         escalation_flags = [str(raw_flags)] if raw_flags else []
 
+    # --- Validate recommended_action ---
+    raw_action = str(data.get("recommended_action", "investigate_further")).strip().lower()
+    recommended_action = raw_action if raw_action in VALID_RECOMMENDED_ACTIONS else "investigate_further"
+
+    # --- Validate relevant_departments (filter to the known list) ---
+    raw_depts = data.get("relevant_departments", [])
+    if isinstance(raw_depts, list):
+        relevant_departments = [str(d) for d in raw_depts if str(d) in VALID_DEPARTMENTS]
+    else:
+        relevant_departments = []
+
     return InvestigationResult(
         timeline_reconstruction=str(data.get("timeline_reconstruction", "")).strip(),
         failure_point=failure_point,
@@ -410,6 +551,8 @@ def _parse_model_output(raw: str, chunks: list[dict]) -> InvestigationResult:
         confidence_score=confidence,
         sources=sources,
         escalation_flags=escalation_flags,
+        recommended_action=recommended_action,
+        relevant_departments=relevant_departments,
     )
 
 
@@ -453,6 +596,13 @@ async def investigate(complaint: str) -> InvestigationResult:
     top_chunks = _rerank(co, complaint, candidates)
 
     rerank_scores = [round(c["rerank_score"], 4) for c in top_chunks]
+
+    # Compute the two independent confidence components up front so they can
+    # be logged and used in a single model_copy call at the end.
+    retrieval_confidence = _compute_confidence(top_chunks)
+    specificity = _complaint_specificity(complaint)
+    final_confidence = round(retrieval_confidence * specificity, 2)
+
     logger.info(
         "Retrieved %d candidates, reranked to %d chunks. Sources: %s",
         len(candidates),
@@ -461,7 +611,9 @@ async def investigate(complaint: str) -> InvestigationResult:
     )
     print(
         f"[query] Rerank scores: {rerank_scores} | "
-        f"Computed confidence: {_compute_confidence(top_chunks):.2f}"
+        f"Retrieval confidence: {retrieval_confidence:.2f} | "
+        f"Specificity: {specificity:.2f} | "
+        f"Final confidence: {final_confidence:.2f}"
     )
 
     system_prompt, user_message = _build_messages(complaint, top_chunks)
@@ -475,10 +627,13 @@ async def investigate(complaint: str) -> InvestigationResult:
 
     result = _parse_model_output(response.text, top_chunks)
 
-    # Override the model's self-reported confidence with a value derived from
-    # rerank scores, which are deterministic and grounded in evidence quality.
+    # Override the model's self-reported confidence with a blended score:
+    #   retrieval_confidence — deterministic, from rerank scores (evidence quality)
+    #   specificity         — how many verifiable details the complaint contains
+    # A vague complaint with no amounts/dates/institution will score near zero
+    # regardless of retrieval quality.
     result = result.model_copy(
-        update={"confidence_score": _compute_confidence(top_chunks)}
+        update={"confidence_score": final_confidence}
     )
 
     logger.info(

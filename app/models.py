@@ -2,7 +2,8 @@
 Pydantic request and response models for the Transfer Investigation Agent.
 """
 
-from typing import List, Literal
+from datetime import datetime
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -56,6 +57,13 @@ class InvestigateRequest(BaseModel):
             "Should include any available reference numbers, dates, amounts, and parties involved."
         ),
         examples=["Customer reports transfer of $4,200 to account ending 8821 initiated on 2024-11-03 has not arrived after 5 business days."],
+    )
+    case_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "If provided, the investigation result will be saved to this case record "
+            "and the case status will be updated to 'investigated'."
+        ),
     )
 
 
@@ -121,3 +129,67 @@ class InvestigationResult(BaseModel):
             "Empty list if none identified."
         ),
     )
+    recommended_action: Literal["send_response", "escalate", "investigate_further"] = Field(
+        default="investigate_further",
+        description=(
+            "AI-recommended next action for the analyst. "
+            "send_response: evidence sufficient, send the draft. "
+            "escalate: route to a specialist team. "
+            "investigate_further: gather more information first."
+        ),
+    )
+    relevant_departments: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Departments suggested for escalation or coordination. "
+            "Empty when recommended_action is send_response."
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# /cases — request / response models
+# ---------------------------------------------------------------------------
+
+class CaseCreate(BaseModel):
+    """Payload for POST /cases — submitted by the client."""
+
+    client_id: str = Field(..., description="Client identifier (e.g. 'Client #4821').")
+    category: str = Field(..., description="Triage category for the complaint.")
+    complaint: str = Field(..., min_length=10, description="Free-text complaint description.")
+
+
+class CaseResponse(BaseModel):
+    """Case record returned by GET /cases and related endpoints."""
+
+    id: str = Field(..., description="UUID of the case.")
+    client_id: str
+    category: str
+    complaint: str
+    status: str = Field(..., description="One of: open | investigated | resolved | escalated.")
+    result_json: Optional[dict] = Field(default=None, description="Serialised InvestigationResult, null until investigated.")
+    action_taken: Optional[str] = Field(default=None, description="'replied' or 'escalated', null until actioned.")
+    department: Optional[str] = Field(default=None, description="Department routed to on escalation.")
+    created_at: datetime
+    resolved_at: Optional[datetime] = None
+
+
+# ---------------------------------------------------------------------------
+# /cases/{id}/escalate — request model
+# ---------------------------------------------------------------------------
+
+class EscalateRequest(BaseModel):
+    """Payload for PATCH /cases/{id}/escalate."""
+
+    department: str = Field(..., description="The department this case is being escalated to.")
+
+
+# ---------------------------------------------------------------------------
+# /admin/reset — response model
+# ---------------------------------------------------------------------------
+
+class AdminResetResponse(BaseModel):
+    """Response from POST /admin/reset."""
+
+    seeded: int = Field(..., description="Number of demo cases inserted.")
+    message: str

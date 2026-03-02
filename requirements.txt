@@ -7,6 +7,11 @@ pydantic
 
 aiofiles
 
+# Database
+sqlalchemy[asyncio]
+asyncpg
+aiosqlite
+
 # Testing
 pytest
 pytest-asyncio

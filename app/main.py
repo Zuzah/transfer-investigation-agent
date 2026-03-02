@@ -2,26 +2,44 @@
 Transfer Investigation Agent — FastAPI entry point.
 
 Routes:
-  GET  /          — serves the operator UI (app/static/index.html)
-  GET  /health    — returns service status and knowledge base chunk count
-  POST /ingest    — loads knowledge_base/docs/ into ChromaDB (?overwrite=false)
-  POST /investigate — accepts a complaint and returns a cited draft response
+  GET  /                     — serves the operator UI (app/static/index.html)
+  GET  /client               — serves the client page (app/static/client/index.html)
+  GET  /analyst              — serves the analyst page (app/static/analyst/index.html)
+  GET  /admin                — serves the admin page (app/static/admin/index.html)
+  GET  /health               — service status + knowledge base chunk count
+  POST /ingest               — loads knowledge_base/docs/ into ChromaDB
+  POST /investigate          — runs the RAG+LLM investigation pipeline
+  POST /cases                — client submits a new complaint case
+  GET  /cases                — analyst fetches the case queue (filterable by status)
+  GET  /cases/{id}           — get a single case record
+  PATCH /cases/{id}/resolve  — mark a case resolved (action_taken=replied)
+  PATCH /cases/{id}/escalate — mark a case escalated (route to a department)
+  POST /admin/reset          — wipe all cases and re-seed 5 demo cases
 
 CORS is open (internal demo tool — not exposed to the public internet).
-Static files are served from app/static/.
+Static files are served from app/static/ when the Next.js build output exists.
 """
 
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
-from fastapi import FastAPI, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db import Case, create_tables, get_session
 from app.ingest import ingest_documents
 from app.models import (
+    AdminResetResponse,
+    CaseCreate,
+    CaseResponse,
+    EscalateRequest,
     HealthResponse,
     IngestRouteResponse,
     InvestigateRequest,
@@ -33,9 +51,72 @@ logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
+# ---------------------------------------------------------------------------
+# Demo seed data — mirrors the hardcoded COMPLAINTS in the frontend queue
+# ---------------------------------------------------------------------------
+
+_SEED_CASES = [
+    {
+        "client_id": "Client #4821",
+        "category": "Institutional Delay",
+        "complaint": (
+            "Client transferred their RRSP from TD Bank 3 weeks ago. Status shows "
+            "Transferring but nothing has arrived. Client says TD confirmed funds left "
+            "their account 2 weeks ago."
+        ),
+    },
+    {
+        "client_id": "Client #3307",
+        "category": "Wire Transfer Issue",
+        "complaint": (
+            "Client sent a wire transfer yesterday morning, received same-day confirmation "
+            "email, funds still not showing in account after 24 hours."
+        ),
+    },
+    {
+        "client_id": "Client #5512",
+        "category": "Missing Funds",
+        "complaint": (
+            "Client initiated a PAD deposit of $4,500 six business days ago. Bank confirms "
+            "debit was taken but funds are not reflected in Wealthsimple balance."
+        ),
+    },
+    {
+        "client_id": "Client #2198",
+        "category": "Account Restriction",
+        "complaint": (
+            "Client account was flagged and restricted after a large TFSA transfer. Client "
+            "has not received any communication and cannot access their account."
+        ),
+    },
+    {
+        "client_id": "Client #6643",
+        "category": "Transfer Rejected",
+        "complaint": (
+            "Client attempted to move TFSA from RBC. Transfer was rejected but client was "
+            "not notified. Discovered only after checking status in app."
+        ),
+    },
+    {
+        # All 4 specificity signals present: amount + date + institution + reference.
+        # Designed to demonstrate a high-confidence (~90%) investigation result.
+        "client_id": "Client #7719",
+        "category": "Institutional Delay",
+        "complaint": (
+            "Client initiated a full transfer of their non-registered investment account "
+            "from RBC Direct Investing on 2025-01-14, for a total value of $12,450. "
+            "Wealthsimple issued confirmation ref #WS-20250114-8831 the same day. "
+            "As of today, 15 business days have elapsed and the assets have not appeared "
+            "in the Wealthsimple account. RBC confirmed on 2025-01-28 that the transfer "
+            "request was accepted and the account was debited. Client is requesting an "
+            "urgent status update as the funds are inaccessible during the transfer period."
+        ),
+    },
+]
+
 
 # ---------------------------------------------------------------------------
-# Startup — auto-ingest if the knowledge base is empty
+# Startup tasks
 # ---------------------------------------------------------------------------
 
 async def _auto_ingest_if_empty() -> None:
@@ -69,7 +150,8 @@ async def _auto_ingest_if_empty() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """FastAPI lifespan: run startup tasks, then yield to serve requests."""
+    """FastAPI lifespan: create DB tables, run auto-ingest, then yield."""
+    await create_tables()
     await _auto_ingest_if_empty()
     yield
 
@@ -86,7 +168,7 @@ app = FastAPI(
         "reconstructs the transfer timeline, identifies the likely failure point, "
         "and returns a cited draft response for human review and approval."
     ),
-    version="0.1.0",
+    version="0.2.0",
 )
 
 # CORS — open for all origins (internal demo only; restrict in production)
@@ -97,28 +179,88 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Static files — only mounted when the Next.js build output exists.
-# During development the frontend runs as a separate Next.js dev server
-# (port 3000); app/static/ is only populated by `cd frontend && npm run build`.
-if STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+# Next.js compiled assets — JS bundles, CSS, and chunk files.
+# Next.js hard-codes "/_next/" as the base path for all compiled assets in the
+# HTML it generates, so this mount must be at "/_next", not "/static".
+_next_dir = STATIC_DIR / "_next"
+if _next_dir.exists():
+    app.mount("/_next", StaticFiles(directory=str(_next_dir)), name="next_assets")
 
 
 # ---------------------------------------------------------------------------
-# Routes
+# Utility
 # ---------------------------------------------------------------------------
+
+def _case_to_response(case: Case) -> CaseResponse:
+    """Convert a Case ORM object to a CaseResponse Pydantic model."""
+    return CaseResponse(
+        id=case.id,
+        client_id=case.client_id,
+        category=case.category,
+        complaint=case.complaint,
+        status=case.status,
+        result_json=case.result_json,
+        action_taken=case.action_taken,
+        department=case.department,
+        created_at=case.created_at,
+        resolved_at=case.resolved_at,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Routes — static + health
+# ---------------------------------------------------------------------------
+
+def _serve_page(name: str | None = None) -> FileResponse:
+    """
+    Serve a Next.js static-export page by name.
+
+    Next.js App Router with output='export' writes each route as:
+      /          → app/static/index.html
+      /client    → app/static/client/index.html
+      /analyst   → app/static/analyst/index.html
+      /admin     → app/static/admin/index.html
+
+    Raises 503 when the frontend has not been built yet (app/static/ absent).
+    """
+    from fastapi.responses import JSONResponse
+
+    if name:
+        path = STATIC_DIR / name / "index.html"
+    else:
+        path = STATIC_DIR / "index.html"
+
+    if path.exists():
+        return FileResponse(str(path))
+
+    return JSONResponse(
+        {"detail": "Frontend not built. Run `cd frontend && npm run build`."},
+        status_code=503,
+    )
+
 
 @app.get("/", include_in_schema=False)
 async def serve_ui():
-    """Serve the operator UI from app/static/index.html (production only)."""
-    index = STATIC_DIR / "index.html"
-    if index.exists():
-        return FileResponse(str(index))
-    from fastapi.responses import JSONResponse
-    return JSONResponse(
-        {"detail": "Frontend not built. Run `cd frontend && npm run build`."},
-        status_code=404,
-    )
+    """Serve the role-chooser landing page (app/static/index.html)."""
+    return _serve_page()
+
+
+@app.get("/client", include_in_schema=False)
+async def serve_client():
+    """Serve the client complaint submission page (app/static/client/index.html)."""
+    return _serve_page("client")
+
+
+@app.get("/analyst", include_in_schema=False)
+async def serve_analyst():
+    """Serve the analyst investigation workspace (app/static/analyst/index.html)."""
+    return _serve_page("analyst")
+
+
+@app.get("/admin", include_in_schema=False)
+async def serve_admin():
+    """Serve the admin database panel (app/static/admin/index.html)."""
+    return _serve_page("admin")
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -134,6 +276,10 @@ async def health():
         knowledge_base_size=knowledge_base_size(),
     )
 
+
+# ---------------------------------------------------------------------------
+# Routes — knowledge base ingestion
+# ---------------------------------------------------------------------------
 
 @app.post("/ingest", response_model=IngestRouteResponse)
 async def ingest(
@@ -161,8 +307,15 @@ async def ingest(
     )
 
 
+# ---------------------------------------------------------------------------
+# Routes — investigation
+# ---------------------------------------------------------------------------
+
 @app.post("/investigate", response_model=InvestigationResult)
-async def investigate(request: InvestigateRequest):
+async def investigate(
+    request: InvestigateRequest,
+    session: AsyncSession = Depends(get_session),
+):
     """
     Investigate a transfer complaint.
 
@@ -170,14 +323,16 @@ async def investigate(request: InvestigateRequest):
       1. Embeds the complaint using Cohere Embed v3
       2. Retrieves the top 20 candidate chunks from ChromaDB
       3. Reranks to the top 5 using Cohere Rerank v3
-      4. Passes the complaint + context to Command R+ (command-r-plus-08-2024)
+      4. Passes the complaint + context to Command R+
       5. Returns a structured result with timeline, failure point, draft reply,
-         confidence score, cited sources, and any escalation flags
+         confidence score, cited sources, and escalation flags
+
+    If case_id is provided, the result is saved to that case record and the
+    case status is updated to 'investigated'.
 
     The draft_client_response field is for human review only.
     It must not be sent to clients without operator approval.
     """
-    # Log complaint preview (truncated) and confidence on completion — never the full text.
     logger.info("Received complaint: %.100s...", request.complaint)
 
     result = await run_investigation(request)
@@ -193,4 +348,142 @@ async def investigate(request: InvestigateRequest):
         f"confidence={result.confidence_score:.2f}"
     )
 
+    # Persist result to the case record when case_id is supplied
+    if request.case_id:
+        case = await session.get(Case, request.case_id)
+        if case:
+            case.result_json = result.model_dump(mode="json")
+            case.status = "investigated"
+        else:
+            logger.warning("case_id %r not found — result not persisted.", request.case_id)
+
     return result
+
+
+# ---------------------------------------------------------------------------
+# Routes — cases (CRUD)
+# ---------------------------------------------------------------------------
+
+@app.post("/cases", response_model=CaseResponse, status_code=201)
+async def create_case(
+    payload: CaseCreate,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Create a new complaint case.
+
+    Called by the client view when a user submits a transfer complaint.
+    Returns the new case record with status='open'.
+    """
+    case = Case(
+        client_id=payload.client_id,
+        category=payload.category,
+        complaint=payload.complaint,
+    )
+    session.add(case)
+    await session.flush()  # assigns the generated id before commit
+    return _case_to_response(case)
+
+
+@app.get("/cases", response_model=list[CaseResponse])
+async def list_cases(
+    status: Optional[str] = Query(
+        default=None,
+        description="Filter by status: open | investigated | resolved | escalated",
+    ),
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    List all complaint cases, ordered newest first.
+
+    Pass ?status=open (or investigated, resolved, escalated) to filter.
+    Returns all cases when the status parameter is omitted.
+    """
+    stmt = select(Case).order_by(Case.created_at.desc())
+    if status:
+        stmt = stmt.where(Case.status == status)
+    rows = await session.execute(stmt)
+    return [_case_to_response(c) for c in rows.scalars()]
+
+
+@app.get("/cases/{case_id}", response_model=CaseResponse)
+async def get_case(
+    case_id: str,
+    session: AsyncSession = Depends(get_session),
+):
+    """Return a single case by ID. Raises 404 if not found."""
+    case = await session.get(Case, case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail=f"Case {case_id!r} not found.")
+    return _case_to_response(case)
+
+
+@app.patch("/cases/{case_id}/resolve", response_model=CaseResponse)
+async def resolve_case(
+    case_id: str,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Mark a case as resolved (analyst sent the draft response to the client).
+
+    Sets status='resolved', action_taken='replied', resolved_at=now.
+    """
+    case = await session.get(Case, case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail=f"Case {case_id!r} not found.")
+    case.status = "resolved"
+    case.action_taken = "replied"
+    case.resolved_at = datetime.now(timezone.utc)
+    return _case_to_response(case)
+
+
+@app.patch("/cases/{case_id}/escalate", response_model=CaseResponse)
+async def escalate_case(
+    case_id: str,
+    payload: EscalateRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Mark a case as escalated and record which department it was routed to.
+
+    Sets status='escalated', action_taken='escalated', department=payload.department.
+    """
+    case = await session.get(Case, case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail=f"Case {case_id!r} not found.")
+    case.status = "escalated"
+    case.action_taken = "escalated"
+    case.department = payload.department
+    case.resolved_at = datetime.now(timezone.utc)
+    return _case_to_response(case)
+
+
+# ---------------------------------------------------------------------------
+# Routes — admin
+# ---------------------------------------------------------------------------
+
+@app.post("/admin/reset", response_model=AdminResetResponse)
+async def admin_reset(session: AsyncSession = Depends(get_session)):
+    """
+    Reset the demo database.
+
+    Deletes all existing cases and re-seeds with 5 representative demo cases.
+    This is a destructive operation — all investigation results and actions
+    are permanently removed.
+    """
+    # Delete all existing cases
+    rows = await session.execute(select(Case))
+    for case in rows.scalars():
+        await session.delete(case)
+    await session.flush()
+
+    # Insert seed cases
+    for seed in _SEED_CASES:
+        session.add(Case(**seed))
+    await session.flush()
+
+    logger.info("Admin reset complete — %d demo cases seeded.", len(_SEED_CASES))
+    return AdminResetResponse(
+        seeded=len(_SEED_CASES),
+        message=f"Database reset. {len(_SEED_CASES)} demo cases seeded.",
+    )
