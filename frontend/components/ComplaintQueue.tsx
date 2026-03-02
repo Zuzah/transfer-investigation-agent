@@ -2,7 +2,7 @@
  * ComplaintQueue — left-panel list of complaint cards from the live case queue.
  *
  * Each card shows:
- *  - Client identifier
+ *  - Client identifier + Case # (first 8 chars of UUID)
  *  - Triage category badge (color-coded by category)
  *  - First ~60 characters of the complaint text
  *  - Status dot: blue=open(unreviewed), amber=investigated, green=resolved, red=escalated
@@ -90,7 +90,7 @@ export default function ComplaintQueue({
                     : "border-l-[3px] border-l-transparent hover:bg-[#FAFAF8]"
                 }`}
             >
-              <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center justify-between mb-0.5">
                 <span className="text-xs font-semibold text-dune">
                   {c.client_id}
                 </span>
@@ -101,6 +101,9 @@ export default function ComplaintQueue({
                   />
                 )}
               </div>
+              <p className="text-[10px] text-gray-ws mb-1.5">
+                Case #{c.id.slice(0, 8)}
+              </p>
 
               <span
                 className={`inline-block text-[10px] font-semibold border px-1.5 py-0.5 rounded mb-1.5 ${BADGE_COLORS[c.category]}`}

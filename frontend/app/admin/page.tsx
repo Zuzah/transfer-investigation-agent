@@ -189,7 +189,7 @@ export default function AdminPage() {
           <div className="border border-ws-border rounded-lg overflow-hidden">
             {/* Table header */}
             <div className="grid grid-cols-[1fr_1fr_1.5fr_1fr_1fr] bg-light border-b border-ws-border px-4 py-2.5">
-              {["Case ID", "Client", "Category", "Status", "Created"].map((h) => (
+              {["Complaint #", "Client", "Category", "Status", "Created"].map((h) => (
                 <span key={h} className="text-[10px] font-bold text-dune uppercase tracking-wider">
                   {h}
                 </span>
@@ -207,7 +207,7 @@ export default function AdminPage() {
                   key={c.id}
                   className="grid grid-cols-[1fr_1fr_1.5fr_1fr_1fr] px-4 py-3 border-b border-ws-border last:border-b-0 hover:bg-[#FAFAF8] transition-colors"
                 >
-                  <span className="text-[11px] font-mono text-gray-ws">{c.id.slice(0, 8)}…</span>
+                  <span className="text-[11px] font-mono text-gray-ws">#{c.id.slice(0, 8)}</span>
                   <span className="text-[11px] text-dune">{c.client_id}</span>
                   <span className="text-[11px] text-dune">{c.category}</span>
                   <span>
