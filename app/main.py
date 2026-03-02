@@ -3,6 +3,9 @@ Transfer Investigation Agent — FastAPI entry point.
 
 Routes:
   GET  /                     — serves the operator UI (app/static/index.html)
+  GET  /client               — serves the client page (app/static/client/index.html)
+  GET  /analyst              — serves the analyst page (app/static/analyst/index.html)
+  GET  /admin                — serves the admin page (app/static/admin/index.html)
   GET  /health               — service status + knowledge base chunk count
   POST /ingest               — loads knowledge_base/docs/ into ChromaDB
   POST /investigate          — runs the RAG+LLM investigation pipeline
@@ -176,11 +179,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Static files — only mounted when the Next.js build output exists.
-# During development the frontend runs as a separate Next.js dev server
-# (port 3000); app/static/ is only populated by `cd frontend && npm run build`.
-if STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+# Next.js compiled assets — JS bundles, CSS, and chunk files.
+# Next.js hard-codes "/_next/" as the base path for all compiled assets in the
+# HTML it generates, so this mount must be at "/_next", not "/static".
+_next_dir = STATIC_DIR / "_next"
+if _next_dir.exists():
+    app.mount("/_next", StaticFiles(directory=str(_next_dir)), name="next_assets")
 
 
 # ---------------------------------------------------------------------------
@@ -207,17 +211,56 @@ def _case_to_response(case: Case) -> CaseResponse:
 # Routes — static + health
 # ---------------------------------------------------------------------------
 
-@app.get("/", include_in_schema=False)
-async def serve_ui():
-    """Serve the operator UI from app/static/index.html (production only)."""
-    index = STATIC_DIR / "index.html"
-    if index.exists():
-        return FileResponse(str(index))
+def _serve_page(name: str | None = None) -> FileResponse:
+    """
+    Serve a Next.js static-export page by name.
+
+    Next.js App Router with output='export' writes each route as:
+      /          → app/static/index.html
+      /client    → app/static/client/index.html
+      /analyst   → app/static/analyst/index.html
+      /admin     → app/static/admin/index.html
+
+    Raises 503 when the frontend has not been built yet (app/static/ absent).
+    """
     from fastapi.responses import JSONResponse
+
+    if name:
+        path = STATIC_DIR / name / "index.html"
+    else:
+        path = STATIC_DIR / "index.html"
+
+    if path.exists():
+        return FileResponse(str(path))
+
     return JSONResponse(
         {"detail": "Frontend not built. Run `cd frontend && npm run build`."},
-        status_code=404,
+        status_code=503,
     )
+
+
+@app.get("/", include_in_schema=False)
+async def serve_ui():
+    """Serve the role-chooser landing page (app/static/index.html)."""
+    return _serve_page()
+
+
+@app.get("/client", include_in_schema=False)
+async def serve_client():
+    """Serve the client complaint submission page (app/static/client/index.html)."""
+    return _serve_page("client")
+
+
+@app.get("/analyst", include_in_schema=False)
+async def serve_analyst():
+    """Serve the analyst investigation workspace (app/static/analyst/index.html)."""
+    return _serve_page("analyst")
+
+
+@app.get("/admin", include_in_schema=False)
+async def serve_admin():
+    """Serve the admin database panel (app/static/admin/index.html)."""
+    return _serve_page("admin")
 
 
 @app.get("/health", response_model=HealthResponse)
