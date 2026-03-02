@@ -4,18 +4,24 @@
  * Renders:
  *  - Failure point badge + urgency badge (READY TO SEND / REVIEW RECOMMENDED / NEEDS REVIEW)
  *  - Confidence bar (via ConfidenceScore)
- *  - Timeline reconstruction
+ *  - AnalystRecommendation card (recommended_action + department pills)
+ *  - Timeline reconstruction (via RichText — **bold** phrases highlighted)
  *  - Draft client response
  *  - Escalation flags (if any)
  *  - Sources cited (via SourcesList)
- *  - Human-approval button (non-functional; fires onApprove)
+ *
+ * The footer Approve button prominence reflects confidence:
+ *   score ≥ 0.50  → Approve & Send is primary (gold fill)
+ *   score < 0.50  → Approve & Send is secondary (outlined)
  */
 
 "use client";
 
 import type { ReactNode } from "react";
 import type { FailurePoint, InvestigationResult } from "@/lib/types";
+import AnalystRecommendation from "@/components/AnalystRecommendation";
 import ConfidenceScore from "@/components/ConfidenceScore";
+import RichText from "@/components/RichText";
 import SourcesList from "@/components/SourcesList";
 
 interface Props {
@@ -73,9 +79,18 @@ export default function ResultsPanel({ result, onApprove }: Props) {
     draft_client_response,
     escalation_flags,
     sources,
+    recommended_action,
+    relevant_departments,
   } = result;
 
   const urgency = urgencyBadge(confidence_score);
+
+  // Confidence-based CTA prominence
+  const approveIsPrimary = confidence_score >= 0.5;
+
+  const approveCls = approveIsPrimary
+    ? "bg-gold text-dune text-[11px] font-bold tracking-widest uppercase px-4 py-2 rounded hover:bg-opacity-80 transition-opacity shrink-0"
+    : "border border-ws-border text-dune text-[11px] font-semibold tracking-widest uppercase px-4 py-2 rounded hover:bg-light transition-colors shrink-0";
 
   return (
     <div className="border border-ws-border rounded-lg overflow-hidden">
@@ -105,18 +120,24 @@ export default function ResultsPanel({ result, onApprove }: Props) {
         {/* Confidence */}
         <ConfidenceScore score={confidence_score} />
 
+        {/* AI recommendation */}
+        <AnalystRecommendation
+          recommended_action={recommended_action}
+          relevant_departments={relevant_departments}
+        />
+
         {/* Timeline */}
         <Section title="Timeline reconstruction">
-          <p className="text-sm text-dune leading-relaxed whitespace-pre-wrap">
-            {timeline_reconstruction}
+          <p className="text-sm text-dune leading-relaxed">
+            <RichText text={timeline_reconstruction} />
           </p>
         </Section>
 
         {/* Draft response */}
         <Section title="Draft client response">
           <div className="bg-light border border-ws-border rounded p-4">
-            <p className="text-sm text-dune leading-relaxed whitespace-pre-wrap">
-              {draft_client_response}
+            <p className="text-sm text-dune leading-relaxed">
+              <RichText text={draft_client_response} />
             </p>
           </div>
         </Section>
@@ -145,10 +166,7 @@ export default function ResultsPanel({ result, onApprove }: Props) {
           AI-generated — review before sending. Financial remedies require human
           authorisation.
         </p>
-        <button
-          onClick={onApprove}
-          className="bg-gold text-dune text-[11px] font-bold tracking-widest uppercase px-4 py-2 rounded hover:bg-opacity-80 transition-opacity shrink-0"
-        >
+        <button onClick={onApprove} className={approveCls}>
           Approve &amp; Send
         </button>
       </div>

@@ -1,20 +1,19 @@
 /**
- * ComplaintQueue — left-panel list of pre-loaded complaint cards.
+ * ComplaintQueue — left-panel list of complaint cards from the live case queue.
  *
  * Each card shows:
  *  - Client identifier
  *  - Triage category badge (color-coded by category)
  *  - First ~60 characters of the complaint text
- *  - Blue dot when the complaint has not yet been investigated
+ *  - Status dot: blue=open(unreviewed), amber=investigated, green=resolved, red=escalated
  *
- * Clicking a card calls onSelect, which pre-fills the workspace textarea.
- * The active card (currently loaded in workspace) is highlighted with a
- * gold left border.
+ * Clicking a card calls onSelect with the full Case object.
+ * The active card is highlighted with a gold left border.
  */
 
 "use client";
 
-import type { QueuedComplaint, TriageCategory } from "@/lib/types";
+import type { Case, CaseStatus, TriageCategory } from "@/lib/types";
 
 const BADGE_COLORS: Record<TriageCategory, string> = {
   "Institutional Delay": "bg-amber-100 text-amber-700 border-amber-200",
@@ -24,20 +23,36 @@ const BADGE_COLORS: Record<TriageCategory, string> = {
   "Transfer Rejected": "bg-amber-100 text-amber-700 border-amber-200",
 };
 
+const STATUS_DOT: Record<CaseStatus, string | null> = {
+  open: "bg-blue-500",
+  investigated: "bg-amber-400",
+  resolved: "bg-emerald-500",
+  escalated: "bg-ws-red",
+};
+
+const STATUS_TITLE: Record<CaseStatus, string> = {
+  open: "Open",
+  investigated: "Investigated — awaiting action",
+  resolved: "Resolved",
+  escalated: "Escalated",
+};
+
 interface Props {
-  complaints: QueuedComplaint[];
+  cases: Case[];
   activeId: string | null;
   reviewedIds: Set<string>;
-  onSelect: (complaint: QueuedComplaint) => void;
+  onSelect: (c: Case) => void;
 }
 
 export default function ComplaintQueue({
-  complaints,
+  cases,
   activeId,
   reviewedIds,
   onSelect,
 }: Props) {
-  const unreviewed = complaints.filter((c) => !reviewedIds.has(c.id)).length;
+  const openUnreviewed = cases.filter(
+    (c) => c.status === "open" && !reviewedIds.has(c.id)
+  ).length;
 
   return (
     <aside className="w-[30%] min-w-[260px] border-r border-ws-border flex flex-col h-full shrink-0">
@@ -47,15 +62,22 @@ export default function ComplaintQueue({
           Complaint Queue
         </h2>
         <p className="text-[11px] text-gray-ws mt-0.5">
-          {unreviewed} unreviewed · {complaints.length} total
+          {openUnreviewed} unreviewed · {cases.length} total
         </p>
       </div>
 
       {/* Complaint cards */}
       <div className="flex-1 overflow-y-auto">
-        {complaints.map((c) => {
+        {cases.length === 0 && (
+          <p className="px-4 py-6 text-[11px] text-gray-ws text-center">
+            No cases in queue.
+          </p>
+        )}
+        {cases.map((c) => {
           const isActive = c.id === activeId;
-          const isReviewed = reviewedIds.has(c.id);
+          const dotColor = c.status === "open" && reviewedIds.has(c.id)
+            ? null
+            : STATUS_DOT[c.status];
 
           return (
             <button
@@ -70,12 +92,12 @@ export default function ComplaintQueue({
             >
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-xs font-semibold text-dune">
-                  {c.clientId}
+                  {c.client_id}
                 </span>
-                {!isReviewed && (
+                {dotColor && (
                   <span
-                    className="w-2 h-2 rounded-full bg-blue-500 shrink-0"
-                    title="Unreviewed"
+                    className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`}
+                    title={STATUS_TITLE[c.status]}
                   />
                 )}
               </div>
@@ -87,7 +109,9 @@ export default function ComplaintQueue({
               </span>
 
               <p className="text-[11px] text-gray-ws leading-relaxed">
-                {c.text.length > 60 ? `${c.text.slice(0, 60)}…` : c.text}
+                {c.complaint.length > 60
+                  ? `${c.complaint.slice(0, 60)}…`
+                  : c.complaint}
               </p>
             </button>
           );

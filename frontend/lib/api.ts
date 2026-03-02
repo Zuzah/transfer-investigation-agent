@@ -14,6 +14,9 @@
  */
 
 import type {
+  AdminResetResponse,
+  Case,
+  CaseCreate,
   HealthResponse,
   IngestRouteResponse,
   InvestigateRequest,
@@ -21,6 +24,15 @@ import type {
 } from "./types";
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
+
+// ---------------------------------------------------------------------------
+// Helper
+// ---------------------------------------------------------------------------
+
+async function _throw(res: Response): Promise<never> {
+  const err = await res.json().catch(() => ({ detail: res.statusText }));
+  throw new Error((err as { detail?: string }).detail ?? JSON.stringify(err));
+}
 
 // ---------------------------------------------------------------------------
 // /investigate  (or /api/investigate in dev)
@@ -34,12 +46,7 @@ export async function postInvestigate(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error((err as { detail?: string }).detail ?? JSON.stringify(err));
-  }
-
+  if (!res.ok) await _throw(res);
   return res.json() as Promise<InvestigationResult>;
 }
 
@@ -62,4 +69,59 @@ export async function postIngest(overwrite = false): Promise<IngestRouteResponse
   const res = await fetch(url, { method: "POST" });
   if (!res.ok) throw new Error(`Ingest failed: ${res.statusText}`);
   return res.json() as Promise<IngestRouteResponse>;
+}
+
+// ---------------------------------------------------------------------------
+// /cases
+// ---------------------------------------------------------------------------
+
+export async function postCase(payload: CaseCreate): Promise<Case> {
+  const res = await fetch(`${BASE}/cases`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) await _throw(res);
+  return res.json() as Promise<Case>;
+}
+
+export async function getCases(status?: string): Promise<Case[]> {
+  const url = status ? `${BASE}/cases?status=${encodeURIComponent(status)}` : `${BASE}/cases`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to fetch cases: ${res.statusText}`);
+  return res.json() as Promise<Case[]>;
+}
+
+export async function getCase(id: string): Promise<Case> {
+  const res = await fetch(`${BASE}/cases/${encodeURIComponent(id)}`);
+  if (!res.ok) await _throw(res);
+  return res.json() as Promise<Case>;
+}
+
+export async function resolveCase(id: string): Promise<Case> {
+  const res = await fetch(`${BASE}/cases/${encodeURIComponent(id)}/resolve`, {
+    method: "PATCH",
+  });
+  if (!res.ok) await _throw(res);
+  return res.json() as Promise<Case>;
+}
+
+export async function escalateCase(id: string, department: string): Promise<Case> {
+  const res = await fetch(`${BASE}/cases/${encodeURIComponent(id)}/escalate`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ department }),
+  });
+  if (!res.ok) await _throw(res);
+  return res.json() as Promise<Case>;
+}
+
+// ---------------------------------------------------------------------------
+// /admin
+// ---------------------------------------------------------------------------
+
+export async function adminReset(): Promise<AdminResetResponse> {
+  const res = await fetch(`${BASE}/admin/reset`, { method: "POST" });
+  if (!res.ok) await _throw(res);
+  return res.json() as Promise<AdminResetResponse>;
 }

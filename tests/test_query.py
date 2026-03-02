@@ -53,7 +53,7 @@ SAMPLE_CHUNKS = [
 ]
 
 VALID_MODEL_JSON = {
-    "timeline_reconstruction": "Day 1: Transfer initiated. Day 5: Not yet received.",
+    "timeline_reconstruction": "**Day 1**: Transfer initiated. **Day 5**: Not yet received.",
     "failure_point": "institution",
     "draft_client_response": (
         "We are looking into your transfer.\n\n"
@@ -61,6 +61,8 @@ VALID_MODEL_JSON = {
     ),
     "confidence_score": 0.85,
     "escalation_flags": [],
+    "recommended_action": "send_response",
+    "relevant_departments": [],
 }
 
 
@@ -574,6 +576,29 @@ class TestParseModelOutput:
         result = _parse_model_output(json.dumps(data), SAMPLE_CHUNKS)
         assert result.confidence_score == 0.5
 
+    def test_recommended_action_parsed_correctly(self):
+        """A valid recommended_action value is preserved as-is."""
+        for action in ("send_response", "escalate", "investigate_further"):
+            data = {**VALID_MODEL_JSON, "recommended_action": action}
+            result = _parse_model_output(json.dumps(data), SAMPLE_CHUNKS)
+            assert result.recommended_action == action
+
+    def test_invalid_recommended_action_normalised_to_investigate_further(self):
+        """An unrecognised recommended_action defaults to 'investigate_further'."""
+        data = {**VALID_MODEL_JSON, "recommended_action": "do_nothing"}
+        result = _parse_model_output(json.dumps(data), SAMPLE_CHUNKS)
+        assert result.recommended_action == "investigate_further"
+
+    def test_relevant_departments_filtered_to_known_list(self):
+        """Departments not in the fixed list are silently dropped."""
+        data = {
+            **VALID_MODEL_JSON,
+            "recommended_action": "escalate",
+            "relevant_departments": ["Payment Operations", "Unknown Team"],
+        }
+        result = _parse_model_output(json.dumps(data), SAMPLE_CHUNKS)
+        assert result.relevant_departments == ["Payment Operations"]
+
 
 # ---------------------------------------------------------------------------
 # investigate (full pipeline orchestration)
@@ -709,6 +734,7 @@ class TestRunInvestigation:
             failure_point="client",
             draft_client_response="Draft.\n\nAGENT MUST VERIFY: nothing.",
             confidence_score=0.6,
+            recommended_action="send_response",
         )
 
         with patch("app.query.investigate", return_value=expected) as mock_inv:

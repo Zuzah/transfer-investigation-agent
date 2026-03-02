@@ -45,6 +45,15 @@ RERANK_TOP_N = 5       # chunks kept after Cohere Rerank
 RERANK_SCORE_CEILING = 0.20
 
 VALID_FAILURE_POINTS = {"wealthsimple", "institution", "client", "unknown"}
+VALID_RECOMMENDED_ACTIONS = {"send_response", "escalate", "investigate_further"}
+VALID_DEPARTMENTS = {
+    "Payment Operations",
+    "Compliance & AML",
+    "Client Relations",
+    "Banking Operations",
+    "Risk Management",
+    "Regulatory Reporting",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +238,17 @@ or multiple explanations are equally plausible.
 warranted by the complaint. Use an empty array if none apply.
 7. Financial remedy decisions (refunds, fee waivers, compensation) are NOT your role. \
 Never suggest or promise a remedy in the draft. A human will make that decision.
+8. recommended_action: choose exactly one of the following based on your analysis:
+   send_response       — failure point is clear, no fraud flags, confidence would be ≥ 0.70
+   escalate            — potential_fraud flag present, OR regulatory flag present, OR low confidence
+   investigate_further — failure point is unknown, OR confidence would be 0.50–0.69 with ambiguity
+9. relevant_departments: choose ALL that apply from this fixed list only: \
+"Payment Operations", "Compliance & AML", "Client Relations", \
+"Banking Operations", "Risk Management", "Regulatory Reporting". \
+Use an empty array when recommended_action is send_response.
+10. In timeline_reconstruction, bold 4–8 of the most decision-critical facts using **phrase** \
+markdown: amounts, dates, institution names, key status labels, and required action items. \
+Use ** sparingly — only the phrases an analyst absolutely must not overlook.
 """
 
     context_blocks = []
@@ -278,7 +298,11 @@ agent should confirm before sending this response.>",
 
   "confidence_score": <float between 0.0 and 1.0>,
 
-  "escalation_flags": [<list of flag strings, or empty array>]
+  "escalation_flags": [<list of flag strings, or empty array>],
+
+  "recommended_action": "<Exactly one of: send_response | escalate | investigate_further>",
+
+  "relevant_departments": [<departments from the fixed list, or empty array>]
 }}
 
 Return only valid JSON. Do not include markdown fences, commentary, or any text \
@@ -383,6 +407,8 @@ def _parse_model_output(raw: str, chunks: list[dict]) -> InvestigationResult:
             confidence_score=0.0,
             sources=sources,
             escalation_flags=["model_output_parse_failure", "manual_review_required"],
+            recommended_action="investigate_further",
+            relevant_departments=["Payment Operations"],
         )
 
     # --- Validate and normalise failure_point ---
@@ -403,6 +429,17 @@ def _parse_model_output(raw: str, chunks: list[dict]) -> InvestigationResult:
     else:
         escalation_flags = [str(raw_flags)] if raw_flags else []
 
+    # --- Validate recommended_action ---
+    raw_action = str(data.get("recommended_action", "investigate_further")).strip().lower()
+    recommended_action = raw_action if raw_action in VALID_RECOMMENDED_ACTIONS else "investigate_further"
+
+    # --- Validate relevant_departments (filter to the known list) ---
+    raw_depts = data.get("relevant_departments", [])
+    if isinstance(raw_depts, list):
+        relevant_departments = [str(d) for d in raw_depts if str(d) in VALID_DEPARTMENTS]
+    else:
+        relevant_departments = []
+
     return InvestigationResult(
         timeline_reconstruction=str(data.get("timeline_reconstruction", "")).strip(),
         failure_point=failure_point,
@@ -410,6 +447,8 @@ def _parse_model_output(raw: str, chunks: list[dict]) -> InvestigationResult:
         confidence_score=confidence,
         sources=sources,
         escalation_flags=escalation_flags,
+        recommended_action=recommended_action,
+        relevant_departments=relevant_departments,
     )
 
 

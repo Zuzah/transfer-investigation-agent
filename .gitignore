@@ -209,6 +209,11 @@ __marimo__/
 # ChromaDB — persisted vector store (rebuilt via `python -m app.ingest`)
 chroma_db/
 
+# SQLite dev database — local fallback when DATABASE_URL is not set
+*.db
+*.db-shm
+*.db-wal
+
 # Frontend — Next.js
 frontend/node_modules/
 frontend/.next/
