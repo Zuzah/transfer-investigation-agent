@@ -200,7 +200,7 @@ export default function AnalystPage() {
 
       {/* Header */}
       <header className="border-b border-ws-border px-6 py-3 flex items-center gap-2.5 shrink-0">
-        <div className="w-5 h-5 bg-dune rounded-full" />
+        <Link href="/"><img src="/wealthsimple-logo.webp" alt="Wealthsimple" className="h-5 w-auto" /></Link>
         <span className="text-sm font-bold tracking-tight text-dune">Wealthsimple</span>
         <span className="text-ws-border mx-1.5 select-none">|</span>
         <span className="text-sm font-semibold text-dune">Transfer Investigation</span>
