@@ -5,7 +5,7 @@
  *  - Failure point badge + urgency badge (READY TO SEND / REVIEW RECOMMENDED / NEEDS REVIEW)
  *  - Confidence bar (via ConfidenceScore)
  *  - AnalystRecommendation card (recommended_action + department pills)
- *  - Timeline reconstruction (via RichText — **bold** phrases highlighted)
+ *  - Timeline reconstruction (via TransferTimeline — visual step track + collapsible AI prose)
  *  - Draft client response
  *  - Escalation flags (if any)
  *  - Sources cited (via SourcesList)
@@ -23,6 +23,7 @@ import AnalystRecommendation from "@/components/AnalystRecommendation";
 import ConfidenceScore from "@/components/ConfidenceScore";
 import RichText from "@/components/RichText";
 import SourcesList from "@/components/SourcesList";
+import TransferTimeline from "@/components/TransferTimeline";
 
 interface Props {
   result: InvestigationResult;
@@ -127,11 +128,15 @@ export default function ResultsPanel({ result, onApprove }: Props) {
         />
 
         {/* Timeline */}
-        <Section title="Timeline reconstruction">
-          <p className="text-sm text-dune leading-relaxed">
-            <RichText text={timeline_reconstruction} />
-          </p>
-        </Section>
+        <div className="mb-6">
+          <h3 className="text-[11px] font-bold text-dune uppercase tracking-wider mb-3">
+            Timeline reconstruction
+          </h3>
+          <TransferTimeline
+            failure_point={failure_point}
+            timeline_reconstruction={timeline_reconstruction}
+          />
+        </div>
 
         {/* Draft response */}
         <Section title="Draft client response">
