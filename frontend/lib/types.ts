@@ -1,12 +1,10 @@
 /**
  * TypeScript interfaces mirroring app/models.py.
  *
- * This file is the single source of truth for all data shapes shared between
- * the frontend and the FastAPI backend. When app/models.py changes, update
- * this file to match.
+ * Single source of truth for all data shapes shared between the frontend
+ * and the FastAPI backend. When app/models.py changes, update this file.
  *
- * No imports — types only. Framework-agnostic: used unchanged after migration
- * to React/Next.js.
+ * No imports — types only.
  */
 
 // ---------------------------------------------------------------------------

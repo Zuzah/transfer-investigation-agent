@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Spinner keyframe — Tailwind's animate-spin uses this via its own @keyframes,
+   but we define it here too so the class name is available regardless. */
+@layer utilities {
+  .animate-spin {
+    animation: spin 0.75s linear infinite;
+  }
+}

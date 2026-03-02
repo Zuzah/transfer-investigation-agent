@@ -1,13 +1,16 @@
 /**
  * API layer — all fetch calls live here.
  *
- * No other file should call fetch() directly. This makes the API contract
- * explicit and the surface easy to swap when migrating to React (e.g. with
- * React Query wrapping these same functions).
+ * No other file should call fetch() directly.
  *
- * BASE is an empty string so all URLs are relative. During development Vite's
- * proxy forwards them to FastAPI on port 8000. In production, FastAPI serves
- * the built frontend from the same origin, so no proxy is needed.
+ * BASE resolution:
+ *   Development (npm run dev): NEXT_PUBLIC_API_BASE=/api
+ *     → calls /api/investigate, handled by app/api/investigate/route.ts
+ *     → that route proxies to FastAPI at localhost:8000
+ *
+ *   Production (npm run build → static export served by FastAPI):
+ *     NEXT_PUBLIC_API_BASE is unset (empty string)
+ *     → calls /investigate directly on FastAPI (same origin, no proxy needed)
  */
 
 import type {
@@ -17,10 +20,10 @@ import type {
   InvestigationResult,
 } from "./types";
 
-const BASE = "";
+const BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
 // ---------------------------------------------------------------------------
-// /investigate
+// /investigate  (or /api/investigate in dev)
 // ---------------------------------------------------------------------------
 
 export async function postInvestigate(
@@ -41,7 +44,7 @@ export async function postInvestigate(
 }
 
 // ---------------------------------------------------------------------------
-// /health
+// /health  (or /api/health in dev)
 // ---------------------------------------------------------------------------
 
 export async function getHealth(): Promise<HealthResponse> {
@@ -51,7 +54,7 @@ export async function getHealth(): Promise<HealthResponse> {
 }
 
 // ---------------------------------------------------------------------------
-// /ingest
+// /ingest  (or /api/ingest in dev)
 // ---------------------------------------------------------------------------
 
 export async function postIngest(overwrite = false): Promise<IngestRouteResponse> {
