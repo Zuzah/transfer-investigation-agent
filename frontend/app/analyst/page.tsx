@@ -229,6 +229,7 @@ export default function AnalystPage() {
             cases={cases}
             activeId={activeCase?.id ?? null}
             reviewedIds={reviewedIds}
+            investigatingId={investigating ? (activeCase?.id ?? null) : null}
             onSelect={handleSelectCase}
           />
         )}

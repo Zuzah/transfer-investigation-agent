@@ -5,7 +5,14 @@
  *  - Client identifier + Case # (first 8 chars of UUID)
  *  - Triage category badge (color-coded by category)
  *  - First ~60 characters of the complaint text
- *  - Status dot: blue=open(unreviewed), amber=investigated, green=resolved, red=escalated
+ *  - Status badge (bottom-right): labeled dot showing the case lifecycle state
+ *
+ * Status lifecycle (5 states):
+ *   unreviewed  — open, not yet analyzed (blue dot)
+ *   in_analysis — API call in flight for this case (amber pulsing dot)
+ *   draft_ready — AI response received, awaiting analyst action (gold dot)
+ *   escalated   — analyst escalated the case (red dot)
+ *   resolved    — analyst approved & sent response (green dot)
  *
  * Clicking a card calls onSelect with the full Case object.
  * The active card is highlighted with a gold left border.
@@ -13,34 +20,55 @@
 
 "use client";
 
-import type { Case, CaseStatus, TriageCategory } from "@/lib/types";
+import type { Case, TriageCategory } from "@/lib/types";
 
 const BADGE_COLORS: Record<TriageCategory, string> = {
   "Institutional Delay": "bg-amber-100 text-amber-700 border-amber-200",
   "Wire Transfer Issue": "bg-blue-100 text-blue-700 border-blue-200",
-  "Missing Funds": "bg-red-100 text-ws-red border-red-200",
+  "Missing Funds":       "bg-red-100 text-ws-red border-red-200",
   "Account Restriction": "bg-red-100 text-ws-red border-red-200",
-  "Transfer Rejected": "bg-amber-100 text-amber-700 border-amber-200",
+  "Transfer Rejected":   "bg-amber-100 text-amber-700 border-amber-200",
 };
 
-const STATUS_DOT: Record<CaseStatus, string | null> = {
-  open: "bg-blue-500",
-  investigated: "bg-amber-400",
-  resolved: "bg-emerald-500",
-  escalated: "bg-ws-red",
+// ---------------------------------------------------------------------------
+// UI status — 5-state lifecycle tracker
+// ---------------------------------------------------------------------------
+
+type UiStatus =
+  | "unreviewed"
+  | "in_analysis"
+  | "draft_ready"
+  | "escalated"
+  | "resolved";
+
+const STATUS_CONFIG: Record<
+  UiStatus,
+  { dotClass: string; label: string; labelClass: string; pulse: boolean }
+> = {
+  unreviewed:  { dotClass: "bg-blue-500",    label: "Unreviewed",  labelClass: "text-blue-600",    pulse: false },
+  in_analysis: { dotClass: "bg-amber-400",   label: "In Analysis", labelClass: "text-amber-600",   pulse: true  },
+  draft_ready: { dotClass: "bg-gold",        label: "Draft Ready", labelClass: "text-dune",        pulse: false },
+  escalated:   { dotClass: "bg-ws-red",      label: "Escalated",   labelClass: "text-ws-red",      pulse: false },
+  resolved:    { dotClass: "bg-emerald-500", label: "Resolved",    labelClass: "text-emerald-600", pulse: false },
 };
 
-const STATUS_TITLE: Record<CaseStatus, string> = {
-  open: "Open",
-  investigated: "Investigated — awaiting action",
-  resolved: "Resolved",
-  escalated: "Escalated",
-};
+function getUiStatus(c: Case, investigatingId: string | null): UiStatus {
+  if (c.status === "resolved")     return "resolved";
+  if (c.status === "escalated")    return "escalated";
+  if (c.status === "investigated") return "draft_ready";
+  if (c.id === investigatingId)    return "in_analysis";
+  return "unreviewed";
+}
+
+// ---------------------------------------------------------------------------
+// Props
+// ---------------------------------------------------------------------------
 
 interface Props {
   cases: Case[];
   activeId: string | null;
   reviewedIds: Set<string>;
+  investigatingId: string | null;
   onSelect: (c: Case) => void;
 }
 
@@ -48,6 +76,7 @@ export default function ComplaintQueue({
   cases,
   activeId,
   reviewedIds,
+  investigatingId,
   onSelect,
 }: Props) {
   const openUnreviewed = cases.filter(
@@ -75,9 +104,8 @@ export default function ComplaintQueue({
         )}
         {cases.map((c) => {
           const isActive = c.id === activeId;
-          const dotColor = c.status === "open" && reviewedIds.has(c.id)
-            ? null
-            : STATUS_DOT[c.status];
+          const uiStatus = getUiStatus(c, investigatingId);
+          const cfg = STATUS_CONFIG[uiStatus];
 
           return (
             <button
@@ -90,32 +118,41 @@ export default function ComplaintQueue({
                     : "border-l-[3px] border-l-transparent hover:bg-[#FAFAF8]"
                 }`}
             >
-              <div className="flex items-center justify-between mb-0.5">
-                <span className="text-xs font-semibold text-dune">
-                  {c.client_id}
-                </span>
-                {dotColor && (
-                  <span
-                    className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`}
-                    title={STATUS_TITLE[c.status]}
-                  />
-                )}
-              </div>
+              {/* Client ID (dot removed from here) */}
+              <p className="text-xs font-semibold text-dune mb-0.5">
+                {c.client_id}
+              </p>
+
+              {/* Case # */}
               <p className="text-[10px] text-gray-ws mb-1.5">
                 Case #{c.id.slice(0, 8)}
               </p>
 
+              {/* Category badge */}
               <span
                 className={`inline-block text-[10px] font-semibold border px-1.5 py-0.5 rounded mb-1.5 ${BADGE_COLORS[c.category]}`}
               >
                 {c.category}
               </span>
 
+              {/* Complaint preview */}
               <p className="text-[11px] text-gray-ws leading-relaxed">
                 {c.complaint.length > 60
                   ? `${c.complaint.slice(0, 60)}…`
                   : c.complaint}
               </p>
+
+              {/* Status badge — bottom right */}
+              <div className="flex justify-end mt-1.5">
+                <span className="flex items-center gap-1">
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${cfg.dotClass}${cfg.pulse ? " animate-pulse" : ""}`}
+                  />
+                  <span className={`text-[10px] font-semibold ${cfg.labelClass}`}>
+                    {cfg.label}
+                  </span>
+                </span>
+              </div>
             </button>
           );
         })}
