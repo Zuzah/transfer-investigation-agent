@@ -3,9 +3,9 @@ Transfer Investigation Agent — FastAPI entry point.
 
 Routes:
   GET  /                     — serves the operator UI (app/static/index.html)
-  GET  /client               — serves the client page (app/static/client/index.html)
-  GET  /analyst              — serves the analyst page (app/static/analyst/index.html)
-  GET  /admin                — serves the admin page (app/static/admin/index.html)
+  GET  /client               — serves the client page (app/static/client.html)
+  GET  /analyst              — serves the analyst page (app/static/analyst.html)
+  GET  /admin                — serves the admin page (app/static/admin.html)
   GET  /health               — service status + knowledge base chunk count
   POST /ingest               — loads knowledge_base/docs/ into ChromaDB
   POST /investigate          — runs the RAG+LLM investigation pipeline
@@ -215,18 +215,25 @@ def _serve_page(name: str | None = None) -> FileResponse:
     """
     Serve a Next.js static-export page by name.
 
-    Next.js App Router with output='export' writes each route as:
+    Next.js 14 App Router with output='export' (and no trailingSlash) writes:
       /          → app/static/index.html
-      /client    → app/static/client/index.html
-      /analyst   → app/static/analyst/index.html
-      /admin     → app/static/admin/index.html
+      /client    → app/static/client.html
+      /analyst   → app/static/analyst.html
+      /admin     → app/static/admin.html
+
+    Falls back to the subdirectory pattern (client/index.html) in case a
+    future Next.js version or trailingSlash:true config changes the layout.
 
     Raises 503 when the frontend has not been built yet (app/static/ absent).
     """
     from fastapi.responses import JSONResponse
 
     if name:
-        path = STATIC_DIR / name / "index.html"
+        # Flat file — default App Router export layout
+        flat = STATIC_DIR / f"{name}.html"
+        # Subdirectory fallback (trailingSlash:true or Pages Router layout)
+        subdir = STATIC_DIR / name / "index.html"
+        path = flat if flat.exists() else subdir
     else:
         path = STATIC_DIR / "index.html"
 
