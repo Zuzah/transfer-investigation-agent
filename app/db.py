@@ -31,17 +31,24 @@ def _build_database_url() -> str:
     """
     Resolve the database URL from the environment.
 
-    Normalises the driver prefix so asyncpg is always used for Postgres.
+    Two normalisations are applied for asyncpg compatibility:
+      1. Driver prefix: postgresql:// → postgresql+asyncpg://
+      2. SSL parameter: sslmode=<value> → ssl=<value>
+         asyncpg does not recognise the libpq 'sslmode' keyword; it uses 'ssl'.
+         Neon (and most managed Postgres providers) emit sslmode=require by default.
+
     Falls back to a local SQLite file when DATABASE_URL is not set.
     """
     raw = os.getenv("DATABASE_URL", "")
     if raw:
-        # Neon (and most providers) give postgresql:// — asyncpg requires postgresql+asyncpg://
+        # 1 — normalise driver prefix so asyncpg is always used for Postgres
         if raw.startswith("postgresql://"):
-            return raw.replace("postgresql://", "postgresql+asyncpg://", 1)
-        if raw.startswith("postgres://"):  # older Heroku / Render format
-            return raw.replace("postgres://", "postgresql+asyncpg://", 1)
-        return raw  # already has the correct driver prefix
+            raw = raw.replace("postgresql://", "postgresql+asyncpg://", 1)
+        elif raw.startswith("postgres://"):  # older Heroku / Render format
+            raw = raw.replace("postgres://", "postgresql+asyncpg://", 1)
+        # 2 — translate sslmode= → ssl= (asyncpg uses its own ssl parameter name)
+        raw = raw.replace("sslmode=", "ssl=")
+        return raw
     # Local dev fallback — SQLite, no Postgres credentials required
     return "sqlite+aiosqlite:///./cases.db"
 
