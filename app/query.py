@@ -12,6 +12,7 @@ The returned InvestigationResult is a draft for human review.
 It must not be sent to clients without operator approval.
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -54,6 +55,49 @@ VALID_DEPARTMENTS = {
     "Risk Management",
     "Regulatory Reporting",
 }
+
+
+# ---------------------------------------------------------------------------
+# System prompt — loaded once at module init
+# ---------------------------------------------------------------------------
+
+def _load_system_prompt() -> str:
+    """
+    Load the investigation system prompt.
+
+    Resolution order:
+      1. SYSTEM_PROMPT environment variable — set as a Render secret in
+         production to keep the live prompt out of version control.
+      2. app/prompts/system_prompt.md — committed reference prompt, used in
+         development and CI where the env var is not set.
+
+    A 12-character SHA-256 fingerprint of the loaded text is logged at INFO
+    level so the prompt version used for each investigation can be audited
+    without logging the prompt text itself.
+
+    Raises:
+        FileNotFoundError: If neither the env var nor the file exists.
+    """
+    env_prompt = os.getenv("SYSTEM_PROMPT")
+    if env_prompt:
+        source = "SYSTEM_PROMPT environment variable"
+        text = env_prompt
+    else:
+        prompt_path = Path(__file__).parent / "prompts" / "system_prompt.md"
+        if not prompt_path.exists():
+            raise FileNotFoundError(
+                f"System prompt not found at {prompt_path} and "
+                "SYSTEM_PROMPT environment variable is not set."
+            )
+        source = str(prompt_path)
+        text = prompt_path.read_text(encoding="utf-8")
+
+    fingerprint = hashlib.sha256(text.encode()).hexdigest()[:12]
+    logger.info("System prompt loaded from %s (sha256: %s\u2026)", source, fingerprint)
+    return text
+
+
+_SYSTEM_PROMPT: str = _load_system_prompt()
 
 
 # ---------------------------------------------------------------------------
@@ -215,53 +259,7 @@ def _build_messages(complaint: str, chunks: list[dict]) -> tuple[str, str]:
     Returns:
         Tuple of (system_prompt, user_message).
     """
-    system_prompt = """\
-You are a senior payment operations analyst at Wealthsimple. \
-Your role is to investigate transfer complaints using internal process documentation \
-and produce structured analysis for human agents to review before contacting clients.
-
-RULES YOU MUST FOLLOW:
-1. Cite the source document filename for every factual claim about process or timelines.
-2. Be specific about which step in the transfer process likely failed — \
-do not give a vague answer like "something went wrong at the institution".
-3. The draft_client_response must be written in plain language. \
-No internal jargon, no system names, no process step numbers. \
-Write as if speaking directly to the client, but remember this is a DRAFT for a human agent to review.
-4. End the draft_client_response with a line explicitly stating what the \
-human agent must verify or confirm before approving and sending the response.
-5. Assign a confidence_score between 0.0 and 1.0 reflecting actual evidence present in the \
-complaint. A vague complaint with no specific amounts, dates, or institution names warrants a \
-score below 0.30. Do not assign high confidence when you cannot verify key facts from the text.
-6. Populate escalation_flags with any of the following if applicable: \
-"potential_fraud", "regulatory_reporting_required", "supervisor_approval_required", \
-"large_transaction_review", "account_restriction_possible", or any other specific flag \
-warranted by the complaint. Use an empty array if none apply.
-7. Financial remedy decisions (refunds, fee waivers, compensation) are NOT your role. \
-Never suggest or promise a remedy in the draft. A human will make that decision.
-8. recommended_action: choose exactly one of the following based on your analysis:
-   send_response       — failure point is clear, no fraud flags, confidence would be ≥ 0.70
-   escalate            — potential_fraud flag present, OR regulatory flag present, OR low confidence
-   investigate_further — failure point is unknown, OR confidence would be 0.50–0.69 with ambiguity
-9. relevant_departments: choose ALL that apply from this fixed list only: \
-"Payment Operations", "Compliance & AML", "Client Relations", \
-"Banking Operations", "Risk Management", "Regulatory Reporting". \
-Use an empty array when recommended_action is send_response.
-10. In timeline_reconstruction, bold 4–8 of the most decision-critical facts using **phrase** \
-markdown: amounts, dates, institution names, key status labels, and required action items. \
-Use ** sparingly — only the phrases an analyst absolutely must not overlook.
-11. Apply "Insufficient complaint detail" ONLY when the complaint genuinely lacks at least two of \
-these four operational facts: (a) transfer amount, (b) transfer initiation date or timeframe, \
-(c) source institution name, (d) reference or confirmation number. If the complaint contains all \
-four, proceed with full timeline reconstruction — do NOT flag missing timestamps for every \
-individual communication step. An initiation date and one corroborating date are sufficient.
-12. When both the source institution and Wealthsimple have confirmed their respective actions \
-(e.g. institution confirms transfer accepted / funds debited; Wealthsimple issued a confirmation \
-number) but funds have not arrived beyond the expected processing timeline, do NOT ask the client \
-for more information. In this case: set failure_point to "institution" or "wealthsimple", set \
-recommended_action to "investigate_further", add "Payment Operations" to relevant_departments, \
-and draft a response explaining that Wealthsimple is tracing the transfer internally and will \
-follow up — the client does not need to take any further action.
-"""
+    system_prompt = _SYSTEM_PROMPT
 
     context_blocks = []
     for i, chunk in enumerate(chunks, start=1):
