@@ -97,8 +97,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Static files — served at /static, index.html at /
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+# Static files — only mounted when the Next.js build output exists.
+# During development the frontend runs as a separate Next.js dev server
+# (port 3000); app/static/ is only populated by `cd frontend && npm run build`.
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # ---------------------------------------------------------------------------
@@ -107,8 +110,15 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 @app.get("/", include_in_schema=False)
 async def serve_ui():
-    """Serve the operator UI from app/static/index.html."""
-    return FileResponse(str(STATIC_DIR / "index.html"))
+    """Serve the operator UI from app/static/index.html (production only)."""
+    index = STATIC_DIR / "index.html"
+    if index.exists():
+        return FileResponse(str(index))
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        {"detail": "Frontend not built. Run `cd frontend && npm run build`."},
+        status_code=404,
+    )
 
 
 @app.get("/health", response_model=HealthResponse)

@@ -209,6 +209,7 @@ __marimo__/
 # ChromaDB — persisted vector store (rebuilt via `python -m app.ingest`)
 chroma_db/
 
-# Frontend build tooling
+# Frontend — Next.js
 frontend/node_modules/
-frontend/.vite/
+frontend/.next/        # Next.js dev server cache and incremental build output
+frontend/out/          # default static export dir (our build uses ../app/static instead)

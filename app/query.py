@@ -38,10 +38,11 @@ COLLECTION_NAME = "transfer_knowledge"
 CANDIDATE_COUNT = 20   # chunks fetched from ChromaDB before reranking
 RERANK_TOP_N = 5       # chunks kept after Cohere Rerank
 
-# Cohere Rerank v3 relevance_score values for relevant RAG documents typically
-# fall in the 0.2–0.5 range, not 0.7–1.0. Dividing the weighted average by
-# this ceiling maps a "good" match (~0.4) to ~80% confidence instead of ~40%.
-RERANK_SCORE_CEILING = 0.5
+# Cohere Rerank v3 relevance_score values for relevant RAG documents in this
+# domain (short complaint queries vs. long procedural docs) empirically fall
+# in the 0.05–0.20 range. Dividing the weighted average by this ceiling maps
+# a "good" match (~0.16) to ~80% confidence instead of ~30%.
+RERANK_SCORE_CEILING = 0.20
 
 VALID_FAILURE_POINTS = {"wealthsimple", "institution", "client", "unknown"}
 
@@ -295,11 +296,12 @@ def _compute_confidence(chunks: list[dict]) -> float:
     remaining chunks contributes 50%. This rewards both a strong best match and
     broad supporting evidence.
 
-    The weighted average is then normalised against RERANK_SCORE_CEILING (0.5)
+    The weighted average is then normalised against RERANK_SCORE_CEILING (0.20)
     because Cohere Rerank v3 relevance_score values for relevant RAG documents
-    typically fall in the 0.2–0.5 range. Without normalisation a well-matched
-    complaint scores ~35% even when retrieval quality is high. After
-    normalisation a top score of ~0.40 maps to ~80% confidence.
+    in this domain (short complaint queries vs. long procedural docs) empirically
+    fall in the 0.05–0.20 range. Without normalisation a well-matched complaint
+    scores ~28% even when retrieval quality is high. After normalisation a top
+    score of ~0.16 maps to ~80% confidence.
 
     Rerank scores are deterministic for the same input, so this value is
     consistent across repeated calls — unlike the model's self-reported score
@@ -450,11 +452,16 @@ async def investigate(complaint: str) -> InvestigationResult:
     candidates = _retrieve_candidates(collection, embedding)
     top_chunks = _rerank(co, complaint, candidates)
 
+    rerank_scores = [round(c["rerank_score"], 4) for c in top_chunks]
     logger.info(
         "Retrieved %d candidates, reranked to %d chunks. Sources: %s",
         len(candidates),
         len(top_chunks),
         [c["source"] for c in top_chunks],
+    )
+    print(
+        f"[query] Rerank scores: {rerank_scores} | "
+        f"Computed confidence: {_compute_confidence(top_chunks):.2f}"
     )
 
     system_prompt, user_message = _build_messages(complaint, top_chunks)
