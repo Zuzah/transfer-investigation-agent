@@ -94,6 +94,21 @@ _SEED_CASES = [
             "not notified. Discovered only after checking status in app."
         ),
     },
+    {
+        # All 4 specificity signals present: amount + date + institution + reference.
+        # Designed to demonstrate a high-confidence (~90%) investigation result.
+        "client_id": "Client #7719",
+        "category": "Institutional Delay",
+        "complaint": (
+            "Client initiated a full transfer of their non-registered investment account "
+            "from RBC Direct Investing on 2025-01-14, for a total value of $12,450. "
+            "Wealthsimple issued confirmation ref #WS-20250114-8831 the same day. "
+            "As of today, 15 business days have elapsed and the assets have not appeared "
+            "in the Wealthsimple account. RBC confirmed on 2025-01-28 that the transfer "
+            "request was accepted and the account was debited. Client is requesting an "
+            "urgent status update as the funds are inaccessible during the transfer period."
+        ),
+    },
 ]
 
 

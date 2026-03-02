@@ -18,6 +18,7 @@ from app.query import (
     _build_chroma_collection,
     _build_cohere_client,
     _build_messages,
+    _complaint_specificity,
     _compute_confidence,
     _embed_query,
     _parse_model_output,
@@ -601,6 +602,74 @@ class TestParseModelOutput:
 
 
 # ---------------------------------------------------------------------------
+# _complaint_specificity
+# ---------------------------------------------------------------------------
+
+class TestComplaintSpecificity:
+    """Tests for the complaint detail-signal detector."""
+
+    def test_zero_signals_returns_near_zero(self):
+        """A vague complaint with no amount, date, institution, or reference
+        returns 0.05 — the minimum multiplier that prevents a score of exactly
+        zero when retrieval quality is genuinely high."""
+        vague = "I sent money to Wealthsimple but it never arrived. Why?"
+        assert _complaint_specificity(vague) == 0.05
+
+    def test_amount_signal_detected(self):
+        """A dollar amount in the complaint counts as one signal → 0.50."""
+        assert _complaint_specificity("I transferred $2,500 but it is missing.") == 0.50
+
+    def test_date_signal_detected(self):
+        """A year (e.g. 2024) counts as the date signal → 0.50."""
+        assert _complaint_specificity("My transfer from 2024 has not arrived.") == 0.50
+
+    def test_institution_signal_detected(self):
+        """A known bank name (TD Bank) counts as one signal → 0.50."""
+        assert _complaint_specificity("I initiated a transfer from TD Bank but it failed.") == 0.50
+
+    def test_reference_signal_detected(self):
+        """A reference number counts as one signal → 0.50."""
+        assert _complaint_specificity("My transfer ref #1234567 has not posted.") == 0.50
+
+    def test_two_signals_returns_0_80(self):
+        """Amount + date = 2 signals → 0.80."""
+        complaint = "Transfer of $4,200 initiated on 2024-11-03 has not arrived."
+        assert _complaint_specificity(complaint) == 0.80
+
+    def test_three_signals_returns_0_95(self):
+        """Amount + date + institution = 3 signals → 0.95."""
+        complaint = "Transfer of $4,200 on 2024-11-03 from TD Bank has not arrived."
+        assert _complaint_specificity(complaint) == 0.95
+
+    def test_four_signals_returns_1_00(self):
+        """All four signals present → 1.00."""
+        complaint = (
+            "Transfer of $4,200 on 2024-11-03 from TD Bank, "
+            "reference #TXN123456, has not arrived."
+        )
+        assert _complaint_specificity(complaint) == 1.00
+
+    def test_business_days_counts_as_date_signal(self):
+        """'5 business days' counts as a time-reference signal."""
+        assert _complaint_specificity("My transfer has not arrived after 5 business days.") == 0.50
+
+    def test_weeks_counts_as_date_signal(self):
+        """'3 weeks' counts as a time-reference signal."""
+        assert _complaint_specificity("It has been 3 weeks and still no funds.") == 0.50
+
+    def test_case_insensitive_institution_match(self):
+        """Institution matching is case-insensitive (rbc, Rbc, RBC all work)."""
+        assert _complaint_specificity("Transfer from rbc never posted.") == 0.50
+
+    def test_sample_complaint_has_two_signals(self):
+        """SAMPLE_COMPLAINT (amount + date) → 2 signals → 0.80.
+
+        This validates the specificity used in test_happy_path_returns_investigation_result.
+        """
+        assert _complaint_specificity(SAMPLE_COMPLAINT) == 0.80
+
+
+# ---------------------------------------------------------------------------
 # investigate (full pipeline orchestration)
 # ---------------------------------------------------------------------------
 
@@ -640,9 +709,12 @@ class TestInvestigate:
 
         assert isinstance(result, InvestigationResult)
         assert result.failure_point == "institution"
-        # Confidence is derived from rerank scores (not model self-report):
-        # top=0.16, rest_avg=0.12, raw=0.14 → 0.14/0.20=0.70
-        assert result.confidence_score == 0.70
+        # Confidence is retrieval_confidence × specificity:
+        #   retrieval: top=0.16, rest_avg=0.12, raw=0.14 → 0.14/0.20 = 0.70
+        #   specificity: SAMPLE_COMPLAINT has $4,200 (amount) + 2024-11-03 (date)
+        #                = 2 signals → 0.80
+        #   final: round(0.70 × 0.80, 2) = 0.56
+        assert result.confidence_score == 0.56
         assert len(result.sources) > 0
 
     async def test_pipeline_calls_each_stage_in_order(self):
