@@ -4,6 +4,8 @@ An internal ops tool that investigates stuck or failed payment transfers at Weal
 
 The draft is never sent to clients automatically — a human operator must review and approve it first.
 
+**Live demo:** https://transfer-investigation-agent.onrender.com/
+
 ---
 
 ## Stack
