@@ -10,6 +10,7 @@
  */
 
 import Link from "next/link";
+import DeveloperCard from "@/components/DeveloperCard";
 
 const ROLES = [
   {
@@ -117,6 +118,8 @@ export default function Home() {
           ))}
         </div>
       </div>
+
+      <DeveloperCard />
     </div>
   );
 }
