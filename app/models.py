@@ -168,10 +168,27 @@ class CaseResponse(BaseModel):
     complaint: str
     status: str = Field(..., description="One of: open | investigated | resolved | escalated.")
     result_json: Optional[dict] = Field(default=None, description="Serialised InvestigationResult, null until investigated.")
+    checklist_json: Optional[dict] = Field(default=None, description="Verification checklist state {item_text: checked_bool}, null until first save.")
     action_taken: Optional[str] = Field(default=None, description="'replied' or 'escalated', null until actioned.")
     department: Optional[str] = Field(default=None, description="Department routed to on escalation.")
     created_at: datetime
     resolved_at: Optional[datetime] = None
+
+
+# ---------------------------------------------------------------------------
+# /cases/{id}/checklist — request / response models
+# ---------------------------------------------------------------------------
+
+class ChecklistResponse(BaseModel):
+    """Response body for GET and PATCH /cases/{id}/checklist."""
+
+    checklist: dict = Field(..., description="Map of {item_text: checked_bool}. Empty dict if not yet saved.")
+
+
+class ChecklistUpdateRequest(BaseModel):
+    """Request body for PATCH /cases/{id}/checklist."""
+
+    checklist: dict = Field(..., description="Full checklist state to persist: {item_text: checked_bool}.")
 
 
 # ---------------------------------------------------------------------------

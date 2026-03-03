@@ -39,6 +39,8 @@ from app.models import (
     AdminResetResponse,
     CaseCreate,
     CaseResponse,
+    ChecklistResponse,
+    ChecklistUpdateRequest,
     EscalateRequest,
     HealthResponse,
     IngestRouteResponse,
@@ -138,6 +140,7 @@ def _case_to_response(case: Case) -> CaseResponse:
         complaint=case.complaint,
         status=case.status,
         result_json=case.result_json,
+        checklist_json=case.checklist_json,
         action_taken=case.action_taken,
         department=case.department,
         created_at=case.created_at,
@@ -401,6 +404,41 @@ async def escalate_case(
     case.department = payload.department
     case.resolved_at = datetime.now(timezone.utc)
     return _case_to_response(case)
+
+
+@app.get("/cases/{case_id}/checklist", response_model=ChecklistResponse)
+async def get_case_checklist(
+    case_id: str,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Return the verification checklist state for a case.
+
+    Returns an empty dict when the checklist has not yet been saved.
+    """
+    case = await session.get(Case, case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail=f"Case {case_id!r} not found.")
+    return ChecklistResponse(checklist=case.checklist_json or {})
+
+
+@app.patch("/cases/{case_id}/checklist", response_model=ChecklistResponse)
+async def update_case_checklist(
+    case_id: str,
+    payload: ChecklistUpdateRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Replace the full verification checklist state for a case.
+
+    Accepts a dict of {item_text: checked_bool} and persists it to the
+    case record. Returns the saved checklist.
+    """
+    case = await session.get(Case, case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail=f"Case {case_id!r} not found.")
+    case.checklist_json = payload.checklist
+    return ChecklistResponse(checklist=case.checklist_json)
 
 
 # ---------------------------------------------------------------------------

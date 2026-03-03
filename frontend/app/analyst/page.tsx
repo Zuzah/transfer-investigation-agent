@@ -63,6 +63,9 @@ export default function AnalystPage() {
   const [result, setResult] = useState<InvestigationResult | null>(null);
   const [investigateError, setInvestigateError] = useState<string | null>(null);
 
+  // ── Checklist gate ────────────────────────────────────────────────────────
+  const [allChecked, setAllChecked] = useState(false);
+
   // ── Approve / Escalate ────────────────────────────────────────────────────
   const [resolving, setResolving] = useState(false);
   const [showEscalate, setShowEscalate] = useState(false);
@@ -102,6 +105,7 @@ export default function AnalystPage() {
     setEscalateDept("");
 
     setReviewedIds((prev) => { const next = new Set(prev); next.add(c.id); return next; });
+    setAllChecked(false);
 
     // If the case already has a result from a previous investigation, load it
     if (c.result_json) {
@@ -280,6 +284,10 @@ export default function AnalystPage() {
               <ResultsPanel
                 result={result}
                 onApprove={handleApprove}
+                caseId={activeCase?.id ?? ""}
+                category={activeCase?.category ?? "Institutional Delay"}
+                onAllChecked={setAllChecked}
+                checklistComplete={allChecked}
               />
 
               {/* ── Action footer ── */}
@@ -293,7 +301,8 @@ export default function AnalystPage() {
                     <div className="flex items-center gap-3">
                       <button
                         onClick={handleApprove}
-                        disabled={resolving || escalating}
+                        disabled={!allChecked || resolving || escalating}
+                        title={!allChecked ? "Complete verification checklist to proceed" : undefined}
                         className="bg-gold text-dune text-[11px] font-bold tracking-widest uppercase px-5 py-2.5 rounded hover:bg-opacity-80 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         {resolving ? "Sending…" : "Approve & Send"}
@@ -303,7 +312,8 @@ export default function AnalystPage() {
                           setShowEscalate(true);
                           setEscalateDept(deptOptions[0] ?? "");
                         }}
-                        disabled={resolving || escalating}
+                        disabled={!allChecked || resolving || escalating}
+                        title={!allChecked ? "Complete verification checklist to proceed" : undefined}
                         className="border border-ws-border text-dune text-[11px] font-bold tracking-widest uppercase px-5 py-2.5 rounded hover:bg-light transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         Escalate

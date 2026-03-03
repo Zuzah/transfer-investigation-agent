@@ -17,7 +17,7 @@ from typing import AsyncGenerator
 from urllib.parse import urlparse, urlunparse
 
 from dotenv import load_dotenv
-from sqlalchemy import JSON, DateTime, String, Text
+from sqlalchemy import JSON, DateTime, String, Text, inspect, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -96,6 +96,7 @@ class Case(Base):
     complaint: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
     result_json: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
+    checklist_json: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
     action_taken: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     department: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
@@ -131,12 +132,36 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 # Table creation
 # ---------------------------------------------------------------------------
 
+def _apply_schema_migrations(conn) -> None:
+    """
+    Code-first schema reconciliation.
+
+    Inspects the live database columns for each ORM table and adds any columns
+    that exist in the ORM model but are missing from the actual table. This
+    runs after create_all so new tables are always fully created on first start.
+
+    Adding a column to the ORM model is the only change needed — this function
+    detects and applies it automatically without try/except error-swallowing.
+    """
+    inspector = inspect(conn)
+
+    # Guard: table may not exist yet on very first startup (create_all handles it)
+    if "cases" not in inspector.get_table_names():
+        return
+
+    existing = {c["name"] for c in inspector.get_columns("cases")}
+    if "checklist_json" not in existing:
+        conn.execute(text("ALTER TABLE cases ADD COLUMN checklist_json JSON"))
+
+
 async def create_tables() -> None:
     """
-    Create all ORM tables if they do not yet exist.
+    Create all ORM tables if they do not yet exist, then reconcile the live
+    schema with the current ORM model.
 
     Called once during FastAPI lifespan startup. Safe to call repeatedly —
     SQLAlchemy uses CREATE TABLE IF NOT EXISTS semantics.
     """
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_apply_schema_migrations)

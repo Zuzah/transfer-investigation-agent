@@ -76,6 +76,9 @@ export interface CaseCreate {
   complaint: string;
 }
 
+/** Checklist state: maps verification item text to checked boolean. */
+export type ChecklistState = Record<string, boolean>;
+
 /** Mirrors CaseResponse in app/models.py */
 export interface Case {
   id: string;
@@ -84,6 +87,7 @@ export interface Case {
   complaint: string;
   status: CaseStatus;
   result_json: InvestigationResult | null;
+  checklist_json: ChecklistState | null;
   action_taken: "replied" | "escalated" | null;
   department: string | null;
   created_at: string; // ISO 8601

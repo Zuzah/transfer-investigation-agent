@@ -7,6 +7,7 @@
  *  - AnalystRecommendation card (recommended_action + department pills)
  *  - Timeline reconstruction (via TransferTimeline — visual step track + collapsible AI prose)
  *  - Draft client response
+ *  - VerificationChecklist (category-specific pre-action steps, DB-persisted)
  *  - Escalation flags (if any)
  *  - Sources cited (via SourcesList)
  *
@@ -18,16 +19,21 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { FailurePoint, InvestigationResult } from "@/lib/types";
+import type { FailurePoint, InvestigationResult, TriageCategory } from "@/lib/types";
 import AnalystRecommendation from "@/components/AnalystRecommendation";
 import ConfidenceScore from "@/components/ConfidenceScore";
 import RichText from "@/components/RichText";
 import SourcesList from "@/components/SourcesList";
 import TransferTimeline from "@/components/TransferTimeline";
+import VerificationChecklist from "@/components/VerificationChecklist";
 
 interface Props {
   result: InvestigationResult;
   onApprove: () => void;
+  caseId: string;
+  category: TriageCategory;
+  onAllChecked: (v: boolean) => void;
+  checklistComplete: boolean;
 }
 
 const FAILURE_LABELS: Record<FailurePoint, string> = {
@@ -72,7 +78,14 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-export default function ResultsPanel({ result, onApprove }: Props) {
+export default function ResultsPanel({
+  result,
+  onApprove,
+  caseId,
+  category,
+  onAllChecked,
+  checklistComplete,
+}: Props) {
   const {
     failure_point,
     confidence_score,
@@ -147,6 +160,15 @@ export default function ResultsPanel({ result, onApprove }: Props) {
           </div>
         </Section>
 
+        {/* Verification checklist */}
+        <div className="mb-6">
+          <VerificationChecklist
+            caseId={caseId}
+            category={category}
+            onAllChecked={onAllChecked}
+          />
+        </div>
+
         {/* Escalation flags */}
         {escalation_flags.length > 0 && (
           <Section title="Escalation flags">
@@ -171,7 +193,12 @@ export default function ResultsPanel({ result, onApprove }: Props) {
           AI-generated — review before sending. Financial remedies require human
           authorisation.
         </p>
-        <button onClick={onApprove} className={approveCls}>
+        <button
+          onClick={onApprove}
+          disabled={!checklistComplete}
+          title={!checklistComplete ? "Complete verification checklist to proceed" : undefined}
+          className={`${approveCls} disabled:opacity-40 disabled:cursor-not-allowed`}
+        >
           Approve &amp; Send
         </button>
       </div>

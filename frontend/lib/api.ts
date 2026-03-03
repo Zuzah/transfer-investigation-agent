@@ -17,6 +17,7 @@ import type {
   AdminResetResponse,
   Case,
   CaseCreate,
+  ChecklistState,
   HealthResponse,
   IngestRouteResponse,
   InvestigateRequest,
@@ -114,6 +115,34 @@ export async function escalateCase(id: string, department: string): Promise<Case
   });
   if (!res.ok) await _throw(res);
   return res.json() as Promise<Case>;
+}
+
+// ---------------------------------------------------------------------------
+// /cases/{id}/checklist
+// ---------------------------------------------------------------------------
+
+export async function getChecklist(caseId: string): Promise<ChecklistState> {
+  const res = await fetch(`${BASE}/cases/${encodeURIComponent(caseId)}/checklist`);
+  if (!res.ok) await _throw(res);
+  const data = await res.json() as { checklist: ChecklistState };
+  return data.checklist;
+}
+
+export async function patchChecklist(
+  caseId: string,
+  checklist: ChecklistState
+): Promise<ChecklistState> {
+  const res = await fetch(
+    `${BASE}/cases/${encodeURIComponent(caseId)}/checklist`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ checklist }),
+    }
+  );
+  if (!res.ok) await _throw(res);
+  const data = await res.json() as { checklist: ChecklistState };
+  return data.checklist;
 }
 
 // ---------------------------------------------------------------------------
