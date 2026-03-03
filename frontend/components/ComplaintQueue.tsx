@@ -22,12 +22,20 @@
 
 import type { Case, TriageCategory } from "@/lib/types";
 
+// const BADGE_COLORS: Record<TriageCategory, string> = {
+//   "Institutional Delay": "bg-amber-100 text-amber-700 border-amber-200",
+//   "Wire Transfer Issue": "bg-blue-100 text-blue-700 border-blue-200",
+//   "Missing Funds":       "bg-red-100 text-ws-red border-red-200",
+//   "Account Restriction": "bg-red-100 text-ws-red border-red-200",
+//   "Transfer Rejected":   "bg-amber-100 text-amber-700 border-amber-200",
+// };
+
 const BADGE_COLORS: Record<TriageCategory, string> = {
-  "Institutional Delay": "bg-amber-100 text-amber-700 border-amber-200",
-  "Wire Transfer Issue": "bg-blue-100 text-blue-700 border-blue-200",
-  "Missing Funds":       "bg-red-100 text-ws-red border-red-200",
-  "Account Restriction": "bg-red-100 text-ws-red border-red-200",
-  "Transfer Rejected":   "bg-amber-100 text-amber-700 border-amber-200",
+  "Institutional Delay": "bg-amber-100 text-[rgb(126,104,18)] border-amber-200",
+  "Wire Transfer Issue": "bg-amber-100 text-[rgb(126,104,18)] border-amber-200",
+  "Missing Funds": "bg-amber-100 text-[rgb(126,104,18)] border-amber-200",
+  "Account Restriction": "bg-amber-100 text-[rgb(126,104,18)] border-amber-200",
+  "Transfer Rejected": "bg-amber-100 text-[rgb(126,104,18)] border-amber-200",
 };
 
 // ---------------------------------------------------------------------------
@@ -45,18 +53,18 @@ const STATUS_CONFIG: Record<
   UiStatus,
   { dotClass: string; label: string; labelClass: string; pulse: boolean }
 > = {
-  unreviewed:  { dotClass: "bg-blue-500",    label: "Unreviewed",  labelClass: "text-blue-600",    pulse: false },
-  in_analysis: { dotClass: "bg-amber-400",   label: "In Analysis", labelClass: "text-amber-600",   pulse: true  },
-  draft_ready: { dotClass: "bg-gold",        label: "Draft Ready", labelClass: "text-dune",        pulse: false },
-  escalated:   { dotClass: "bg-ws-red",      label: "Escalated",   labelClass: "text-ws-red",      pulse: false },
-  resolved:    { dotClass: "bg-emerald-500", label: "Resolved",    labelClass: "text-emerald-600", pulse: false },
+  unreviewed: { dotClass: "bg-blue-500", label: "Unreviewed", labelClass: "text-blue-600", pulse: false },
+  in_analysis: { dotClass: "bg-amber-400", label: "In Analysis", labelClass: "text-amber-600", pulse: true },
+  draft_ready: { dotClass: "bg-gold", label: "Draft Ready", labelClass: "text-dune", pulse: false },
+  escalated: { dotClass: "bg-ws-red", label: "Escalated", labelClass: "text-ws-red", pulse: false },
+  resolved: { dotClass: "bg-emerald-500", label: "Resolved", labelClass: "text-emerald-600", pulse: false },
 };
 
 function getUiStatus(c: Case, investigatingId: string | null): UiStatus {
-  if (c.status === "resolved")     return "resolved";
-  if (c.status === "escalated")    return "escalated";
+  if (c.status === "resolved") return "resolved";
+  if (c.status === "escalated") return "escalated";
   if (c.status === "investigated") return "draft_ready";
-  if (c.id === investigatingId)    return "in_analysis";
+  if (c.id === investigatingId) return "in_analysis";
   return "unreviewed";
 }
 
@@ -112,10 +120,9 @@ export default function ComplaintQueue({
               key={c.id}
               onClick={() => onSelect(c)}
               className={`w-full text-left px-4 py-3.5 border-b border-ws-border transition-colors
-                ${
-                  isActive
-                    ? "bg-light border-l-[3px] border-l-gold"
-                    : "border-l-[3px] border-l-transparent hover:bg-[#FAFAF8]"
+                ${isActive
+                  ? "bg-light border-l-[3px] border-l-gold"
+                  : "border-l-[3px] border-l-transparent hover:bg-[#FAFAF8]"
                 }`}
             >
               {/* Client ID (dot removed from here) */}

@@ -18,7 +18,7 @@ import type { Case, TriageCategory } from "@/lib/types";
 // ---------------------------------------------------------------------------
 
 const CLIENT_PROFILE = {
-  name: "Alex Chen",
+  name: "Murtaza Hasni",
   clientId: "Client #4821",
   accountType: "RRSP + TFSA",
   memberSince: "2021",
