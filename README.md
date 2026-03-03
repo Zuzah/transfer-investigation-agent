@@ -13,7 +13,7 @@ The draft is never sent to clients automatically — a human operator must revie
 | API | Python 3.11, FastAPI, Uvicorn |
 | AI | Cohere Embed v3, Rerank v3, Command R+ |
 | Vector store | ChromaDB (local persistence) |
-| Frontend | Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS |
+| Frontend | Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS, SWR |
 | Testing | pytest, pytest-asyncio |
 
 ---
@@ -26,20 +26,31 @@ transfer-investigation-agent/
 │   ├── main.py              # FastAPI routes + startup auto-ingest
 │   ├── ingest.py            # Document ingestion pipeline
 │   ├── query.py             # Investigation pipeline (RAG + LLM)
-│   ├── models.py            # Pydantic request/response models
+│   ├── models.py            # Pydantic + SQLAlchemy models
+│   ├── db.py                # SQLite session / engine setup
+│   ├── seeds.py             # Demo case seed data
+│   ├── prompts/
+│   │   └── system_prompt.md # LLM system prompt
 │   └── static/              # Built frontend (output of `npm run build`)
 ├── frontend/                # Next.js 14 (App Router) source
 │   ├── app/
 │   │   ├── layout.tsx       # Root layout (Tailwind, metadata)
-│   │   ├── page.tsx         # Two-panel investigation workspace
-│   │   └── api/             # Next.js route handlers (proxy to FastAPI)
+│   │   ├── page.tsx         # Landing page — role chooser (Client / Analyst / Admin)
+│   │   ├── client/          # Client complaint submission + status tracker
+│   │   ├── analyst/         # Ops analyst investigation workspace
+│   │   └── admin/           # Admin panel — DB reset + case overview
 │   ├── components/
-│   │   ├── ComplaintQueue.tsx    # Left panel — 5 queued complaints
-│   │   ├── ComplaintInput.tsx    # Controlled textarea + submit button
-│   │   ├── WorkflowStepper.tsx   # 5-step horizontal progress tracker
-│   │   ├── ResultsPanel.tsx      # Investigation results + urgency badge
-│   │   ├── ConfidenceScore.tsx   # Confidence bar
-│   │   └── SourcesList.tsx       # Cited sources list
+│   │   ├── ComplaintQueue.tsx       # Left panel — live case queue
+│   │   ├── ComplaintInput.tsx       # Controlled textarea + submit button
+│   │   ├── WorkflowStepper.tsx      # 5-step horizontal progress tracker
+│   │   ├── ResultsPanel.tsx         # Investigation results + urgency badge
+│   │   ├── AnalystRecommendation.tsx # AI draft response + approve/escalate
+│   │   ├── VerificationChecklist.tsx # Pre-approval checklist (persisted via API)
+│   │   ├── TransferTimeline.tsx     # Reconstructed transfer timeline
+│   │   ├── ConfidenceScore.tsx      # Confidence bar
+│   │   ├── SourcesList.tsx          # Cited knowledge base sources
+│   │   ├── RichText.tsx             # Markdown-to-HTML renderer
+│   │   └── DeveloperCard.tsx        # Fixed dog-ear info card (bottom-right)
 │   ├── lib/
 │   │   ├── api.ts           # All fetch calls (no fetch elsewhere)
 │   │   └── types.ts         # TypeScript interfaces (mirrors models.py)
@@ -49,7 +60,12 @@ transfer-investigation-agent/
 ├── knowledge_base/
 │   └── docs/                # Drop .txt process documents here
 ├── tests/
-│   └── test_query.py
+│   ├── test_query.py
+│   ├── test_ingest.py
+│   ├── test_models.py
+│   └── test_checklist.py
+├── cases.db                 # SQLite database (auto-created on first run)
+├── pytest.ini
 ├── requirements.txt
 ├── render.yaml              # Render deployment blueprint
 ├── Procfile                 # Backup start command
@@ -112,7 +128,7 @@ Open [http://localhost:8000](http://localhost:8000).
 
 ## Frontend Development
 
-The frontend is a Next.js 14 project in `frontend/`. During development, Next.js route handlers in `frontend/app/api/` proxy API calls to FastAPI, so you only need one browser tab.
+The frontend is a Next.js 14 project in `frontend/`. During development, Vite's proxy config forwards API calls from the Next.js dev server to FastAPI automatically.
 
 ```bash
 # Terminal 1 — FastAPI backend
@@ -140,7 +156,7 @@ cd frontend && npm run build
 pytest tests/ -v
 ```
 
-All tests mock Cohere and ChromaDB — no API key or live database required.
+All tests mock Cohere, ChromaDB, and SQLAlchemy — no API key, live database, or running server required. Four test modules cover the ingestion pipeline, query/investigation pipeline, Pydantic models, and the checklist API.
 
 ---
 
@@ -270,3 +286,21 @@ curl -X POST http://localhost:8000/investigate \
 | `escalation_flags` | string[] | e.g. `large_transaction_review`, `regulatory_reporting_required` |
 
 > **The `draft_client_response` must not be sent to clients without operator review and approval.**
+
+---
+
+### Case Management API
+
+These endpoints back the three role views (Client, Analyst, Admin).
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/cases` | Submit a new complaint case |
+| `GET` | `/cases` | List all cases (optional `?status=` filter) |
+| `GET` | `/cases/{id}` | Fetch a single case by ID |
+| `PATCH` | `/cases/{id}/resolve` | Mark a case resolved (analyst action) |
+| `PATCH` | `/cases/{id}/escalate` | Mark a case escalated (analyst action) |
+| `GET` | `/cases/{id}/checklist` | Fetch the pre-approval checklist state |
+| `PATCH` | `/cases/{id}/checklist` | Persist checklist checkbox state |
+| `POST` | `/admin/reset` | Wipe all cases and re-seed 5 demo cases |
+

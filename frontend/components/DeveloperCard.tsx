@@ -63,7 +63,7 @@ const DeveloperCard: React.FC = () => {
             className="text-xs hover:underline"
             style={{ color: "#ECD06F" }}
           >
-            github.com/murtazahasni →
+            github.com/Zuzah/transfer-investigation-agent→
           </a>
           <a
             href="https://linkedin.com/in/murtazahasni"
