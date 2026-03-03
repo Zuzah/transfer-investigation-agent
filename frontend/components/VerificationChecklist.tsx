@@ -19,6 +19,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import useSWR from "swr";
 import type { ChecklistState, TriageCategory } from "@/lib/types";
 import { getChecklist, patchChecklist } from "@/lib/api";
 
@@ -75,37 +76,32 @@ export default function VerificationChecklist({ caseId, category, onAllChecked }
     return Object.fromEntries(items.map((item) => [item, false]));
   }
 
-  // Load persisted state on mount / caseId change
+  // Fetch persisted checklist from the API; null key suppresses fetch when caseId is empty
+  const { data: savedChecklist } = useSWR(
+    caseId || null,
+    getChecklist,
+    { revalidateOnFocus: false },
+  );
+
+  // Restore local checkbox state whenever the fetched checklist changes (new case selected)
   useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const saved = await getChecklist(caseId);
-        if (cancelled) return;
-
-        // Merge: use saved values where available, default to false for missing items
-        const restored: ChecklistState = buildDefault();
-        for (const item of items) {
-          if (item in saved) restored[item] = saved[item];
-        }
-
-        setChecked(restored);
-        onAllChecked(items.every((i) => restored[i]));
-      } catch {
-        // Network/404 — start with all unchecked rather than blocking the UI
-        if (!cancelled) {
-          const defaults = buildDefault();
-          setChecked(defaults);
-          onAllChecked(false);
-        }
+    const restored = buildDefault();
+    if (savedChecklist) {
+      for (const item of items) {
+        if (item in savedChecklist) restored[item] = savedChecklist[item];
       }
     }
-
-    load();
-    return () => { cancelled = true; };
+    setChecked(restored);
+    onAllChecked(items.every((i) => restored[i]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [caseId]);
+  }, [savedChecklist, caseId]);
+
+  // Cancel any pending debounced save on unmount to prevent stale PATCH requests
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
 
   function toggle(item: string) {
     const next = { ...checked, [item]: !checked[item] };

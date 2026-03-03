@@ -16,7 +16,8 @@
  */
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import useSWR, { mutate } from "swr";
 import {
   getCases,
   escalateCase,
@@ -47,10 +48,13 @@ const ALL_DEPARTMENTS = [
 // ---------------------------------------------------------------------------
 
 export default function AnalystPage() {
-  // ── Case queue ────────────────────────────────────────────────────────────
-  const [cases, setCases] = useState<Case[]>([]);
-  const [queueLoading, setQueueLoading] = useState(true);
-  const [queueError, setQueueError] = useState<string | null>(null);
+  // ── Case queue — SWR handles loading, polling, and error state ───────────
+  const {
+    data: cases = [],
+    isLoading: queueLoading,
+    error: queueErrorRaw,
+  } = useSWR("cases", () => getCases(), { refreshInterval: 15_000, revalidateOnFocus: true });
+  const queueError = queueErrorRaw instanceof Error ? queueErrorRaw.message : null;
 
   // ── Active case + workspace ───────────────────────────────────────────────
   const [activeCase, setActiveCase] = useState<Case | null>(null);
@@ -72,27 +76,6 @@ export default function AnalystPage() {
   const [escalateDept, setEscalateDept] = useState("");
   const [escalating, setEscalating] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-
-  // ── Load + poll cases ─────────────────────────────────────────────────────
-
-  async function loadCases() {
-    try {
-      const data = await getCases();
-      setCases(data);
-      setQueueError(null);
-    } catch (err) {
-      setQueueError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setQueueLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadCases();
-    const interval = setInterval(loadCases, 15_000);
-    return () => clearInterval(interval);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // ── Select a case from the queue ──────────────────────────────────────────
 
@@ -133,7 +116,7 @@ export default function AnalystPage() {
       setResult(r);
       setStep(4);
 
-      // Update the case in the local list so the queue dot changes immediately
+      // Update active case immediately; SWR revalidates the queue in the background
       if (activeCase) {
         const updated: Case = {
           ...activeCase,
@@ -141,7 +124,7 @@ export default function AnalystPage() {
           result_json: r,
         };
         setActiveCase(updated);
-        setCases((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+        mutate("cases");
       }
     } catch (err) {
       setInvestigateError(err instanceof Error ? err.message : String(err));
@@ -160,7 +143,7 @@ export default function AnalystPage() {
     try {
       const updated = await resolveCase(activeCase.id);
       setActiveCase(updated);
-      setCases((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+      mutate("cases");
       setStep(5);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
@@ -178,7 +161,7 @@ export default function AnalystPage() {
     try {
       const updated = await escalateCase(activeCase.id, escalateDept);
       setActiveCase(updated);
-      setCases((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+      mutate("cases");
       setStep(5);
       setShowEscalate(false);
     } catch (err) {

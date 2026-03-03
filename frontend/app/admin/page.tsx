@@ -9,9 +9,10 @@
  */
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import useSWR, { mutate } from "swr";
 import { adminReset, getCases } from "@/lib/api";
-import type { Case, CaseStatus } from "@/lib/types";
+import type { CaseStatus } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -37,30 +38,18 @@ function fmt(iso: string): string {
 // ---------------------------------------------------------------------------
 
 export default function AdminPage() {
-  const [cases, setCases] = useState<Case[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    data: cases = [],
+    isLoading,
+    isValidating,
+    error: rawError,
+  } = useSWR("cases", () => getCases());
+  const loading = isLoading;
+  const error = rawError instanceof Error ? rawError.message : null;
 
   const [resetting, setResetting] = useState(false);
   const [resetMsg, setResetMsg] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
-
-  async function loadCases() {
-    setLoading(true);
-    try {
-      const data = await getCases();
-      setCases(data);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadCases();
-  }, []);
 
   async function handleReset() {
     setResetting(true);
@@ -69,7 +58,7 @@ export default function AdminPage() {
       const r = await adminReset();
       setResetMsg(r.message);
       setConfirmReset(false);
-      await loadCases();
+      await mutate("cases");
     } catch (err) {
       setResetMsg(err instanceof Error ? err.message : String(err));
     } finally {
@@ -174,11 +163,11 @@ export default function AdminPage() {
               All Cases
             </h2>
             <button
-              onClick={loadCases}
-              disabled={loading}
+              onClick={() => mutate("cases")}
+              disabled={isValidating}
               className="text-xs font-semibold text-gray-ws underline underline-offset-2 disabled:opacity-50"
             >
-              {loading ? "Refreshing…" : "Refresh"}
+              {isValidating ? "Refreshing…" : "Refresh"}
             </button>
           </div>
 
